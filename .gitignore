@@ -1,0 +1,25 @@
+# Rust build artifacts
+/target/
+
+# Secrets & key sidecars (NEVER commit)
+.env
+.env.*
+!.env.example
+*.keys.json
+
+# Live SQLCipher containers & compiled .raphs vaults
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.raphs
+
+# Raw source exam papers, crops & private source cross-references (NEVER commit)
+products/**/inbox/*
+!products/**/inbox/.gitkeep
+products/**/archive/*
+!products/**/archive/.gitkeep
+products/**/private-xref.json
+
+# OS / Editor files
+.DS_Store
+Thumbs.db

@@ -41,22 +41,21 @@
 3. **First Staged 11+ Maths Practice Paper (Git-Ignored Local Input):**
    - **Local Path:** `/home/raphspark/projects/hydrogen/products/gyaraplus/inbox/maths/Practice-Paper-01.pdf`
    - **Clean-Room Mapping:** Ingested into `gyara-maths.raphs` under neutral course paper ID `GYR-MTH-P001`; raw PDF and page crops remain strictly local (`inbox/` $\to$ `archive/` + `private-xref.json`, excluded from Git and `.raphs`).
-4. **`Carbon` (`carbon-protocol` & `carbon-shell`):**
-   - **Git Repository & Latest `main` Commit:** `ssh://git@github.com/raphsaeed/carbon.git` (`662f6d2` — includes Slide-Over Left-Band Book Index + 1-Click `Snap Board` comments + `authorMode`).
-   - **Local Workspace Path on DGX Spark:** `/home/raphspark/projects/carbon` *(Read-only sibling repo—note: run `git -C /home/raphspark/projects/carbon pull --ff-only origin main` before launching locally if still on older commit `0171944`).*
-   - **Zero-Dependency Wire Crate Pin (`Cargo.toml`):** Hydrogen links `carbon-protocol` directly (`serde` + `serde_json` only, zero GPU/OS dependencies) for 100% compile-time type safety on every `ClientMessage`, `ServerMessage`, `CarbonCommand`, `FeedbackEntry`, and `Catalog` payload:
+4. **`Carbon` (`carbon-protocol` & Cross-Machine Mac ↔ DGX Spark Model):**
+   - **No Carbon Executable Needed on DGX Spark:** Hydrogen on DGX Spark does **not** need `carbon-shell` compiled or running a GUI window locally, and binaries are never copied across macOS and Linux.
+   - **Compile-Time Wire Safety (`carbon-protocol` Only):** Hydrogen's `Cargo.toml` pulls only the pure-Rust **`carbon-protocol`** crate directly from GitHub (`ssh://git@github.com/raphsaeed/carbon.git`, `662f6d2`+ — `serde` + `serde_json` only, zero Metal/GPU/window code):
      ```toml
      carbon-protocol = { git = "ssh://git@github.com/raphsaeed/carbon.git", branch = "main" }
      ```
-   - **Launching `carbon-shell` (`ws://127.0.0.1:7420/carbon`):**
-     ```bash
-     # Interactive split board (34% Question | 66% Working Board):
-     cargo run --manifest-path /home/raphspark/projects/carbon/Cargo.toml -p carbon-shell --offline -- --split
-
-     # Headless protocol server for automated Hydrogen layout/ack checks:
-     cargo run --manifest-path /home/raphspark/projects/carbon/Cargo.toml -p carbon-shell --offline -- --headless --port 7420
-     ```
-     *(Port allocation: Carbon Shell `:7420`, Carbon Studio `:7421`, Hydrogen Console `:7430` — zero port collisions.)*
+   - **Live Preview & Comment Sync (Hydrogen on DGX Spark ↔ Carbon on Mac):**
+     - **Carbon runs natively on Mac** (`carbon-shell --split` or `--lan --split`, listening on `:7420`).
+     - **Hydrogen runs on DGX Spark** (`http://<dgx-ip>:7430` opened in the Mac's browser).
+     - Support **both** connection paths seamlessly:
+       1. **Browser-Direct Localhost WS (Zero LAN/Firewall Config):** Hydrogen's HTML/TS UI (running in the Mac browser) connects directly to `ws://127.0.0.1:7420/carbon` on that same Mac, pushing preview batches and forwarding `comment.saved` (`Snap Board` PNGs) to Hydrogen's `axum` API on DGX Spark.
+       2. **Backend LAN WS (`CARBON_WS_URL`):** Hydrogen's Rust backend/CLI can also connect over LAN to `ws://<mac-ip>:7420/carbon` when `carbon-shell --lan --split` is used.
+   - **Standalone Unattended Batch Runs (When Mac Is Closed):**
+     - Hydrogen validates all Carbon commands statically in Rust using `carbon-protocol` types + its KaTeX/`targetId` linter—so batch jobs on DGX Spark run 100% standalone without needing a live Carbon window. *(Optional Linux `carbon-shell --headless --port 7420` from `/home/raphspark/projects/carbon` remains available if ever desired later.)*
+   - *(Port allocation: Carbon Shell `:7420`, Carbon Studio `:7421`, Hydrogen Console `:7430` — zero port collisions.)*
 
 ### Phase 1 Sub-Steps
 - [ ] **1.1 Product & Subject Directory Scaffolding:**
@@ -127,7 +126,8 @@
 
 - [ ] **4.1 `axum` Local HTTP & WebSocket Server (`src/server/`):**
   - REST endpoints for vault selection, `CourseCatalogSnapshot`, question/level inspection, private source-crop serving (`private-xref.json`), job triggers (ingest, regenerate, comment fix, replica), and live WebSocket progress/event push.
-- [ ] **4.2 Bidirectional Live Carbon Author Bridge (`src/carbon/bridge.rs`):**
+- [ ] **4.2 Bidirectional Live Carbon Author Bridge (`web/` Localhost WS + `src/carbon/bridge.rs` LAN WS):**
+  - Support connecting to the Mac's running `carbon-shell` either directly from the Mac browser (`ws://127.0.0.1:7420/carbon`) or from Hydrogen's Rust backend over LAN (`ws://<mac-ip>:7420/carbon`).
   - Push `chrome.update` (`authorMode: true`) + `chrome.setCatalog` (Left-Band Book Index built from `CourseCatalogSnapshot`) to Carbon.
   - Handle live Carbon events:
     - `catalog.itemSelected` $\to$ load clicked Question or Topic Card onto Carbon,

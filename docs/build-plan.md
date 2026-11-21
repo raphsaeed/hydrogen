@@ -22,12 +22,35 @@
 ## Phase 1: Workspace Infrastructure & Core Sibling Wiring
 *Goal: Create the product directory tree, initialize the Rust project, link `memory_core_rs 1.7.0` and `theta_calc` in-process, connect to Carbon over WebSocket, and verify `gyara-maths.raphs` creation/read/write.*
 
+### Pinned Sibling Dependencies, Paths & Environment Notes
+1. **`memory.raphs` (`memory_core_rs 1.7.0`, Schema `2.3.0` Layer `L7`):**
+   - **Git Repository & Immutable Tag:** `ssh://git@github.com/raphs-app/raphs.git` at tag **`memory-core-1.7.0`** ([Release Page](https://github.com/raphs-app/raphs/releases/tag/memory-core-1.7.0)).
+   - **Rust `Cargo.toml` Dependency Pin:**
+     ```toml
+     memory_core_rs = { git = "ssh://git@github.com/raphs-app/raphs.git", tag = "memory-core-1.7.0" }
+     ```
+   - **Host Build Prerequisites (Verified):** `export PATH="$HOME/.cargo/bin:$PATH"` (`rustc 1.98.1`, Edition 2024), `/usr/bin/cc`, and `/usr/bin/perl` (compiles SQLite `3.51.3`, SQLCipher `4.14.0`, `sqlite-vec` `0.1.9`, and vendored OpenSSL directly from source).
+2. **`Theta` (`theta_calc` / `calc-api`):**
+   - **Local Workspace Path:** `/home/raphspark/projects/theta`
+   - **Strict Boundary Rule:** **READ-ONLY dependency—NEVER modify `/home/raphspark/projects/theta`.** Only link/consume what Hydrogen needs.
+   - **Rust `Cargo.toml` Dependency Pin:**
+     ```toml
+     theta_calc = { package = "calc-api", path = "/home/raphspark/projects/theta/crates/calc-api" }
+     ```
+     *(Library crate name: `theta_calc`; standalone MCP/CLI binary target if needed: `theta-calc-mcp`.)*
+3. **First Staged 11+ Maths Practice Paper (Git-Ignored Local Input):**
+   - **Local Path:** `/home/raphspark/projects/hydrogen/products/gyaraplus/inbox/maths/Practice-Paper-01.pdf`
+   - **Clean-Room Mapping:** Ingested into `gyara-maths.raphs` under neutral course paper ID `GYR-MTH-P001`; raw PDF and page crops remain strictly local (`inbox/` $\to$ `archive/` + `private-xref.json`, excluded from Git and `.raphs`).
+4. **`Carbon` (`carbon-shell`):**
+   - **Protocol Endpoint:** `ws://127.0.0.1:7420/carbon` *(local binary/repo path to be recorded here once shared)*.
+
+### Phase 1 Sub-Steps
 - [ ] **1.1 Product & Subject Directory Scaffolding:**
-  - Create `products/gyara/{maths,english,verbal-reasoning,non-verbal-reasoning}/{inbox,archive}` and `products/gcse/{maths,physics}/{inbox,archive}`.
-  - Add `.gitignore` rules protecting raw source papers (`inbox/`, `archive/`, `private-xref.json`), `.env` secrets, and SQLite `-wal`/`-shm` files.
+  - Standardize `products/gyaraplus/` (with `inbox/{maths,english,verbal-reasoning,non-verbal-reasoning}`, `archive/{maths,...}`, and `gyara-{maths,english,verbal-reasoning,non-verbal-reasoning}.raphs`) and `products/gcse/{maths,physics}`.
+  - Verify `.gitignore` protects all raw source papers (`products/**/inbox/`, `products/**/archive/`, `private-xref.json`), `.env` secrets, `.keys.json`, and SQLite/vault binaries.
 - [ ] **1.2 Rust Project & Configuration Setup (`Cargo.toml` & `src/config.rs`):**
-  - Initialize the `hydrogen` Rust crate (`tokio`, `axum`, `serde`, `serde_json`, `clap`, `tokio-tungstenite`, `reqwest`, `tracing`).
-  - Wire dependencies to **`theta_calc`** and **`memory_core_rs` (`1.7.0`, Schema `2.3.0`)**.
+  - Initialize the `hydrogen` Rust crate (Edition 2024: `tokio`, `axum`, `serde`, `serde_json`, `clap`, `tokio-tungstenite`, `reqwest`, `tracing`).
+  - Wire dependencies to **`theta_calc`** (`path = "/home/raphspark/projects/theta/crates/calc-api"`) and **`memory_core_rs`** (`git = "ssh://git@github.com/raphs-app/raphs.git", tag = "memory-core-1.7.0"`).
   - Implement configuration loader (`hydrogen.toml` + environment variables for `GEMINI_API_KEY`, default Lesson Key, Carbon WebSocket URL `ws://127.0.0.1:7420/carbon`, and `axum` port `7430`).
 - [ ] **1.3 `L7` Vault Wrapper (`src/vault/`):**
   - Implement thread-safe `VaultManager` (`tokio::sync::Mutex<Memory>`) handling live `<name>.sqlite` + `<name>.keys.json` containers and `.raphs` bundle `pack` / `unpack`.
@@ -109,8 +132,8 @@
 ## Phase 5: Milestone 1 Live Proving Ground — First Real 11+ Paper End-to-End
 *Goal: Put the entire system (`Papers → Hydrogen → gyara-maths.raphs ↔ Carbon + Theta`) through a real-world test on Paper #1, comparing Antigravity-authored and Rust-API-authored solutions and fixing every integration kink.*
 
-- [ ] **5.1 Ingest Real 11+ Maths Paper #1 (`GYR-MTH-P001`):**
-  - Drop the first real 11+ Maths paper into `products/gyara/maths/inbox/`, slice all questions, and verify `private-xref.json` crops & 100% source-name stripping.
+- [ ] **5.1 Ingest Real 11+ Maths Paper #1 (`GYR-MTH-P001` from `Practice-Paper-01.pdf`):**
+  - Process `/home/raphspark/projects/hydrogen/products/gyaraplus/inbox/maths/Practice-Paper-01.pdf`, slice all questions into `archive/`, and verify `private-xref.json` crops & 100% source-name stripping.
 - [ ] **5.2 Dual-Path Solution Authoring Comparison:**
   - Author a subset of questions interactively via **Antigravity + `hydrogen` CLI** and the rest (or full paper) via the **Rust Web UI (`axum` + Gemini 4 Agentic Loop)** into `gyara-maths.raphs`.
 - [ ] **5.3 Live End-to-End Walkthrough on Carbon + Theta:**

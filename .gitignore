@@ -14,10 +14,8 @@
 *.raphs
 
 # Raw source exam papers, crops & private source cross-references (NEVER commit)
-products/**/inbox/*
-!products/**/inbox/.gitkeep
-products/**/archive/*
-!products/**/archive/.gitkeep
+products/**/inbox/
+products/**/archive/
 products/**/private-xref.json
 
 # OS / Editor files

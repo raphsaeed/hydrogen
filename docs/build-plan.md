@@ -16,6 +16,7 @@
 | **Phase 5** | **Milestone 1 Proving Ground:** 1st Real Question Paper End-to-End & Live Bug-Fix Pass | `[ ] Pending` |
 | **Phase 6** | Comment Auto-Processor, On-Demand Replicas (Question & Paper) & Topic Card Builder | `[ ] Pending` |
 | **Phase 7** | Clean Customer Release Export, Books/Chapters & Multi-Subject Expansion | `[ ] Pending` |
+| **Phase 8** | Zero-Install Web Browser Delivery (`carbon-web` WASM + `theta.wasm` + Web Vault Gateway) | `[ ] Pending` |
 
 ---
 
@@ -187,3 +188,18 @@
   - Support ingesting structured textbook chapters (Concept $\to$ Worked Examples $\to$ Exercise Questions) and shared reading/data stimuli.
 - [ ] **7.3 Multi-Subject & Multi-Product Profiles:**
   - Add subject compiler profiles for `gyara-non-verbal-reasoning.raphs` (`netFold`, `cubeAssembly`, 2D spatial transforms), `gyara-verbal-reasoning.raphs`, `gyara-english.raphs` (`course_stimuli` comprehension passages + `chrome.setDictionary`), and `gcse-{maths,physics}.raphs` (`PhysicsRig`, `calc.formula` FIFA workflow, `reference_sheet` cards).
+
+---
+
+## Phase 8: Zero-Install Web Browser Delivery (`carbon-web` WASM + `theta.wasm` + Web Vault Gateway)
+*Goal: Let individual students and parents (on Mac, Windows, iPad Safari, and Chromebooks) log in and use the full 120Hz interactive Carbon whiteboard, Full-Stage Course Gallery, and `Level 9 → 1` lessons directly in a standard web browser with zero native app installation—built as a second build target from the **exact same `main` branches** (never a diverging `web` Git branch).*
+
+- [ ] **8.1 Single-Codebase Browser WASM Targets (`carbon-web` + `theta-wasm`, No Separate Git Branch):**
+  - Package Carbon's `wasm32-unknown-unknown` `StageRuntime` (`engine.wasm` + HTML/WebGL2 host + KaTeX + Full-Stage Course Gallery) and pure-Rust `theta_calc` (`theta.wasm` for client-side 120Hz `@param` sliders & CAS) as static CDN/browser bundles directly from `main` alongside native `carbon-shell`.
+  - Allow Hydrogen's own browser console (`http://<host>:7430`) to optionally host an inline `carbon-web` preview pane so `Level 9 → 1` steps can be previewed in any browser tab even when native `carbon-shell` is not open.
+- [ ] **8.2 Server-Side `.raphs` Vault Streaming Gateway (Zero Vault Piracy):**
+  - Serve `<product>-<subject>.raphs` from a lightweight Rust `axum` web gateway: keep the `.raphs` vault strictly server-side and stream only the active `chrome.setCatalog` view (merged with the logged-in student's `<student>.raphs` stats, `△` important flags, and `15d` / crimson `dueReminder` states) plus the active question/step Carbon JSON commands over `wss://`.
+- [ ] **8.3 Individual User Login, Cross-Device Sync & Instant "Try Free in Browser" Funnel:**
+  - Add zero-install *"Try a Free Paper"* browser entry links, individual parent/student login, automatic cross-device progress sync (laptop $\leftrightarrow$ iPad browser), and browser WebAudio/WebRTC voice integration with SIGMA.
+
+> **Phase 8 Exit Check:** An individual student on an iPad, Chromebook, Windows PC, or Mac opens the web URL in Chrome/Safari with zero installation, browses the Full-Stage `Gyara+` Course Gallery, works through an interactive `Level 9 → 1` Maths paper with live stylus/mouse ink and audio tutoring, and sees their progress and reminders persist across devices.

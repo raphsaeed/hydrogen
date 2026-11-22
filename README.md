@@ -5,7 +5,7 @@
 ## Documentation (`docs/`)
 
 - **[Requirements Specification](docs/requirements.md)** — Product vision, multi-product roadmap (`gyara-*`, `gcse-*`), functional requirements (`FR-1`–`FR-10`), and locked design decisions.
-- **[System Architecture](docs/architecture.md)** — End-to-end topology, Rust module layout, `L7` vault mapping, Carbon live bridge, and Gemini 4 agentic compilation pipeline.
+- **[Overall System Architecture](docs/system-architecture.md)** — Master cross-component picture (`Hydrogen`, `SIGMA`, `Carbon`, `Theta`, `memory.raphs`), who drives what, Rust module layout, `L7` vault mapping, and compilation/runtime pipelines.
 - **[9-Level Visual Solution Specification](docs/solution-levels.md)** — Question-relative `Level 9 → Level 1` pedagogical rules, Carbon macro strategies, and `question_json` / `solution_json` schemas.
 - **[Phased Build Plan](docs/build-plan.md)** — Execution checklist from Phase 1 infrastructure through Milestone 1 live paper testing and customer release packaging.
 - **[Pedagogical & Visual Rules (`rules/`)](rules/README.md)** — Strictly isolated 4-tier rulebooks (`common.md` → `<product>/common.md` → `<product>/<subject>/{common,levels}.md`) across `gyaraplus`, `gcse`, `alevel`, `primary`, and `infant`.

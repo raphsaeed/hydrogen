@@ -4,7 +4,7 @@
 > **Scope:** **Hydrogen** — Multi-Product AI Solution Compiler, Replica Generator, Vault Manager & Minimal Local Authoring Console (`Rust + axum + HTML/TS`).  
 > **Companion Documents:**
 > - Ecosystem Diagram: [`gyara-workflow.png`](./gyara-workflow.png)
-> - System Architecture: [`architecture.md`](./architecture.md)
+> - Overall System Architecture: [`system-architecture.md`](./system-architecture.md)
 > - 9-Level Visual & Pedagogical Rules: [`solution-levels.md`](./solution-levels.md)
 > - Phased Execution Checklist: [`build-plan.md`](./build-plan.md)
 > - Sibling Specifications: [`theta-integration.md`](./theta-integration.md), [`carbon-integration.md`](./carbon-integration.md), [`memory-raphs.md`](./memory-raphs.md)

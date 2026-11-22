@@ -1,0 +1,39 @@
+[package]
+name = "hydrogen"
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+description = "Multi-product AI curriculum compiler, Level 9->1 visual solution engine, and L7 .raphs vault manager"
+
+[lib]
+name = "hydrogen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hydrogen"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[dependencies]
+# Pinned first-party ecosystem crates
+memory_core_rs = { git = "ssh://git@github.com/raphs-app/raphs.git", tag = "memory-core-1.7.0" }
+theta_calc = { package = "calc-api", path = "/home/raphspark/projects/theta/crates/calc-api", default-features = false }
+carbon-protocol = { git = "ssh://git@github.com/raphsaeed/carbon.git", branch = "main" }
+
+# Minimal, pure-Rust core dependencies (shared versions with theta_calc / memory_core_rs)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
+thiserror = "2.0"
+
+# Lean async runtime & pure-Rust WebSocket client (plain ws:// for local/LAN Carbon; zero extra TLS stack)
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "net", "sync", "fs", "time", "io-util"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

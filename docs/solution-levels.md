@@ -153,9 +153,9 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
       "params": {
         "id": "q-stem",
         "pane": "left",
-        "zone": "question-stem",
-        "typography": "typeset",
-        "text": "In a sale, all prices are reduced by $20\\%$. A coat now costs $\\pounds 48$.\n\nWhat was the original price of the coat?"
+        "zone": "spine",
+        "style": "typeset",
+        "content": "In a sale, all prices are reduced by $20\\%$. A coat now costs $\\pounds 48$.\n\nWhat was the original price of the coat?"
       }
     },
     {
@@ -208,11 +208,53 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
       "partId": "main",
       "usesPriorParts": [],
       "exportedExact": { "original_price": "60" },
+      "finalAnswer": {
+        "katex": "$\\pounds 60.00\\text{ (Option D)}$",
+        "carbonCommands": [
+          {
+            "op": "scene.write",
+            "params": {
+              "id": "ans_final",
+              "pane": "right",
+              "zone": "spine",
+              "style": "typeset",
+              "color": "#15803D",
+              "content": "Original price $= \\mathbf{\\pounds 60.00}$ **(Option D)**",
+              "card": { "fillColor": "#F0FDF4", "borderColor": "#16A34A", "borderStyle": "solid" }
+            }
+          },
+          {
+            "op": "focus.annotate",
+            "params": { "id": "ans_chk", "pane": "right", "targetId": "ans_final", "kind": "check", "color": "#16A34A" }
+          }
+        ]
+      },
       "steps": [
         {
           "stepId": "S01",
+          "stepIndex": 0,
           "stepNumber": 1,
           "stepGoal": "Identify that £48 represents 80% (4/5) of the original price",
+          "breakdownAvailable": true,
+          "substeps": [
+            {
+              "substepIndex": 0,
+              "narration": "The original price before the sale is always 100 percent. Taking 20 percent off leaves 80 percent.",
+              "carbonCommands": [
+                {
+                  "op": "scene.write",
+                  "params": {
+                    "id": "s1_sub0",
+                    "pane": "right",
+                    "zone": "scratch",
+                    "style": "typeset",
+                    "content": "Original $= 100\\%$. Sale takes off $20\\%$, leaving $100\\% - 20\\% = 80\\%$.",
+                    "card": { "headerBanner": "WHY 80%?", "fillColor": "#EFF6FF", "borderColor": "#3B82F6", "borderStyle": "solid" }
+                  }
+                }
+              ]
+            }
+          ],
           "prerequisiteCardIds": ["GYR-MTH-T_PCT01-C01"],
           "thetaVerification": [
             { "tool": "calc.eval", "args": { "expr": "100 - 20" }, "expectedExact": "80" }
@@ -228,10 +270,9 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
                   "params": {
                     "id": "s1_l9_eq",
                     "pane": "right",
-                    "zone": "main-work",
-                    "typography": "typeset",
-                    "mathStyle": "display",
-                    "text": "$100\\% - 20\\% = \\htmlId{pct80}{80\\%} \\implies 80\\%\\text{ of Original} = \\htmlId{val48}{\\pounds 48}$"
+                    "zone": "spine",
+                    "style": "typeset",
+                    "content": "$100\\% - 20\\% = \\htmlId{pct80}{80\\%} \\implies 80\\%\\text{ of Original} = \\htmlId{val48}{\\pounds 48}$"
                   }
                 }
               ]
@@ -245,10 +286,10 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
                   "params": {
                     "id": "s1_l5_trap",
                     "pane": "right",
-                    "zone": "main-work",
-                    "typography": "typeset",
-                    "text": "**Trap ($\\times$):** $\\pounds 48 + 20\\%\\text{ of }\\pounds 48 = \\pounds 57.60$ *(wrong whole!)*\n\n**Truth ($\\checkmark$):** $\\pounds 48$ **is** the remaining $80\\%$ of the Original.",
-                    "card": { "title": "Watch Out for Option B!", "fillColor": "#FEF2F2", "borderColor": "#E11D48", "borderStyle": "solid", "paddingPt": 10.0 }
+                    "zone": "spine",
+                    "style": "typeset",
+                    "content": "**NEVER EVER** take $20\\%$ of $\\pounds 48$ ($\\pounds 48 + \\pounds 9.60 = \\pounds 57.60$) — wrong whole!\n\n**Truth:** $\\pounds 48$ **is** the remaining $80\\%$ of the Original.",
+                    "card": { "headerBanner": "WATCH OUT FOR OPTION B", "fillColor": "#FFF1F2", "borderColor": "#F87171", "borderStyle": "solid" }
                   }
                 }
               ]
@@ -262,7 +303,7 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
                   "params": {
                     "id": "s1_l3_bar",
                     "pane": "right",
-                    "zone": "main-work",
+                    "zone": "diagram",
                     "spec": {
                       "macro": "barModel",
                       "totalLabel": "Original ($100\\%$)",

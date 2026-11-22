@@ -1,6 +1,7 @@
-# Global Common Rules — Clarity, Simplicity, Elegance & Carbon Discipline
+# Global Common Rules — Clarity, Simplicity, Elegance & Carbon Warm-Paper Editorial Discipline
 
-> **Scope:** Applies to **every** product (`infant`, `primary`, `gyaraplus`, `gcse`, `alevel`) and **every** subject (`maths`, `physics`, `english`, `verbal-reasoning`, `non-verbal-reasoning`).
+> **Scope:** Applies to **every** product (`infant`, `primary`, `gyaraplus`, `gcse`, `alevel`) and **every** subject (`maths`, `physics`, `english`, `verbal-reasoning`, `non-verbal-reasoning`).  
+> **Companion Visual Reference:** [`docs/carbon-visual-theme.md`](../docs/carbon-visual-theme.md)
 
 ---
 
@@ -11,47 +12,73 @@
 - Never hide two or three unspoken leaps inside one cryptic line at lower sub-levels.
 
 1.2 **Simplicity (Visual-First, Zero Prose Walls):**
-- A great human tutor with a marker and whiteboard **never writes paragraphs of prose on the board**.
+- A great human tutor with a marker and whiteboard **never writes walls of unanchored prose on the board**.
 - **On the Carbon Board (`scene.write`, `focus.annotate`):** Use crisp equations, clean diagrams/tables/macros, and short pinpoint micro-callouts anchored directly to specific tokens or diagram features.
 - **In Spoken Voice (`narration`):** Put warm, natural, full-sentence tutor explanations inside the `narration` field for **SIGMA** (TTS), keeping the visual board spacious and uncluttered.
 
 1.3 **Elegance (Clean Layout, Zero Hacks):**
-- Never add empty spacer strings, fake padding spaces, or manual pixel tweaks to force layout. Rely on Carbon's relative `AnchorSpec` (`below` with `align: "equals"`, `right-of`, `auto-margin` with obstacle-routed `elbow-arrow` connectors).
+- Never add empty spacer strings, fake padding spaces, or manual pixel tweaks to force layout. Rely on Carbon's relative `AnchorSpec` (`below` with `align: "equals"`, `right-of`, `auto-margin` with obstacle-routed `elbow-arrow` connectors) and canonical `zone`s (`"spine"`, `"scratch"`, `"diagram"`).
 
 ---
 
-## 2. Two-Pane Carbon Board Discipline (`Carbon Protocol v0.1`)
+## 2. Unified Warm-Paper Editorial Theme & Color Rules (Zero Visual Conflict)
 
-2.1 **Clean, Zero-Scroll Question Pane (`pane: "left"`, `zone: "question-stem"`):**
-- Must remain clean, legible, and faithful to the original question's intent, fitting comfortably without vertical overflow.
-- Multiple-choice options (`A–E`) or horizontal figure sequences must stay compact and cleanly grouped—never stacked into tall overflowing columns.
-- Parts mirror printed structure (`(a)`, `(b)`, `(i)`, `(ii)`), with accurate `marks` per part and per question.
+2.1 **Do Not Fight Carbon's Light Editorial Canvas:**
+- Carbon runs a calm light editorial theme (`"warm-paper"` / `"classroom-white"`): Warm Ivory Paper `#FDFBF7` (Index & Left Question Pane), Clean Light Ivory `#FDFCF9` with sky-blue grid `#DAE4F0`/`#CCDBEC` (Right Whiteboard), Warm Stone `#F2ECE1` chrome, and Deep Charcoal `#1F2421` primary ink.
+- **FORBIDDEN:** **NEVER** emit dark-mode canvas fills, dark card backgrounds, or light/pastel/yellow/white text ink (light text is invisible on paper surfaces).
+- **STRICTLY PNG ONLY for Brand/Subject Logos:** `brandLogo` and `logo` in `chrome.setCatalog` must **strictly** use PNG (`data:image/png;base64,...` or `.png` path)—**never** SVG (font-based SVGs alter the brand calligraphy).
 
-2.2 **Glyph-Hugging, Transient Annotations (`focus.annotate`):**
-- Wrap only the specific clue words, numbers, or sub-expressions that the solution points to inside `\htmlId{tok_<name>}{...}`. Do **not** pollute every word with unused IDs.
-- Highlights, underlines, circles, and boxes must **hug only the concise 2–5 word clue or symbol**—never underline multi-line sentences.
-- Mark step-specific clue highlights `"transient": true` (or clear superseded callouts) so annotations never pile up into visual clutter across steps.
-- **Consistent Semantic Colors:** Keep clue colors consistent across steps—if Clue 1 is highlighted in blue (`#2563EB`) in Step 1, use that same blue when substituting or checking Clue 1 in Step 3.
+2.2 **Semantic Ink, Card Fill & Border Tokens (`c1`..`c8` Only):**
+Restrict all equations, diagrams, tables, and callout cards to these exact high-contrast editorial tokens:
+- **Standard Question Stem & Working Steps:** omit `color` (renders `#1F2421` Deep Charcoal on unboxed paper)
+- **`c1` Primary Algebraic / Geometric Focus:** Ink `#2563EB` | Box Fill `#EFF6FF` | Border `#3B82F6`
+- **`c2` Final Answer & Correct Checkmarks:** Ink `#15803D` / `#16A34A` | Box Fill `#F0FDF4` | Border `#16A34A`
+- **`c3` Key Warning / Mistake / Constraint:** Ink `#DC2626` / `#B91C1C` | Box Fill `#FFF1F2` | Border `#F87171`
+- **`c4` Hint / Method Note / Highlight:** Ink `#B45309` / `#D97706` | Box Fill `#FFFBEB` | Border `#F59E0B`
+- **`c5` Sub-Step Breakdown / Substitution:** Ink `#6D28D9` / `#7C3AED` | Box Fill `#F5F3FF` | Border `#8B5CF6`
+- **`c6` Secondary Diagram / Quantity B:** Ink `#0D9488` | Box Fill `#F0FDFA` | Border `#14B8A6`
+- **`c8` Auxiliary Construction / Neutral:** Ink `#475569` | Box Fill `#F8FAFC` | Border `#CBD5E1`
 
-2.3 **KaTeX & Typography Hygiene (`scene.write`):**
-- **Mandatory Math Delimiters:** Every mathematical symbol, number-with-unit expression, fraction, or equation MUST be wrapped in `$...$` or `\(...\)`. Never emit raw ASCII math (`x^2`, `3/4`, `180 deg`) outside `$...$`.
-- **Clean LaTeX Commands:** Prefer `^{\circ}` over Unicode `°` (never put `\,` directly before `^{\circ}`—write `45^{\circ}`, not `45\,^{\circ}`), `-` over Unicode `−`, and `\tfrac{a}{b}` for inline fractions.
-- **No Duplicate Tick Glyphs in Check Annotations:** Never type literal `✓`, `✅`, or `\checkmark` inside a `focus.annotate` `"kind": "check"` label, since Carbon's `"check"` annotation draws a crisp tick mark natively.
-- **Canonical Carbon Enums:** Use `chrome.update`, surface `"plain"` / `"squared"` / `"ruled"` / `"dotted"` / `"isometric"`, and themes `"warm-paper"` / `"classroom-white"` / `"dark-glass"`.
-
-2.4 **Diagram Cleanliness & Regeneration:**
-- Place external dimension labels and vertex letters clearly outside shape perimeters with generous breathing room so text never collides with borders or shading.
-- Never invent extra labels inside a question stimulus figure that weren't part of the problem; put deduced angles/lengths on the Solution Board (or draw them progressively during solution steps).
-- Graphs, charts, tables, clocks, nets, and geometry are **always** regenerated as crisp native Carbon `scene.place2D` / `scene.place3D` specs (or clean vector SVG); real photographs are recreated cleanly as fresh generated illustrations stored in `course_media_assets`.
+2.3 **Classy 12-Subject Soft-Mineral Palette & Independent Logos (`chrome.setCatalog`):**
+- **12-Subject Muted Mineral Palette** (always explicitly set `"color"` on every subject, especially when `> 6` subjects so Carbon's 6-colour fallback never repeats):
+  `#5B7DB1` (Slate Blue) · `#4D8B7A` (Eucalyptus Sage) · `#7A6BA8` (Wisteria Lavender) · `#A8647A` (Dusty Rose) · `#A37E58` (Warm Ochre) · `#568A9E` (Mist Cyan) · `#6B8E67` (Moss Olive) · `#8F6B9E` (Muted Plum) · `#B07462` (Soft Terracotta) · `#5C768D` (Steel Indigo) · `#8C7D53` (Antique Brass) · `#4F8A8B` (Deep Seafoam).
+- **3-Way Per-Subject `logo` Rule (`availableSubjects[i].logo`, PNG Only):** `"data:image/png;base64,..."` renders a distinct subject PNG emblem; `null`/omitted falls back to top-bar `brandLogo`; `""` suppresses the logo cleanly (text-only subject card). `topics[]`, `papers[]`, and `cards[]` never take `logo`—use `color` + `badge`/`tagBadges` (`#6D5CAE` for `AI` replicas, `#475569` neutral) and `importantIcon: "triangle"`.
 
 ---
 
-## 3. Compliance, Anonymization & Verification (Non-Negotiable)
+## 3. Typography, KaTeX & Anti-Clash Diagram Discipline
 
-3.1 **100% Source Anonymity Inside `.raphs`:**
-- **Never** include school names, exam board names, publisher titles, sitting dates, or source PDF filenames anywhere in `question_json`, `solution_json`, titles, badges, or IDs inside `<product>-<subject>.raphs`.
-- Raw PDF crops and source provenance live **exclusively** in Hydrogen's private, git-ignored `private-xref.json` and `archive/`.
+3.1 **Smooth `Lato` Prose & Strict `$...$` LaTeX Math (`scene.write`):**
+- Always set `"style": "typeset"` (`Lato` `16.8 pt` base) for question stems, multi-sentence explanations, `substeps[]` breakdown cards, and `"NEVER EVER..."` misconception cards, putting the body string in `"content"`.
+- Wrap **every** formula, variable, fraction, exponent, angle, ratio, and currency/unit expression in `$...$` or `\(...\)` (e.g. `$\frac{3}{5}$`, `$x^2 + 4x - 12 = 0$`, `$3 : 5$`, `$\pounds 72$`, `$18\text{ cm}^2$`, `$45^{\circ}$` without `\,` before `^{\circ}`).
+- **NEVER** emit raw ASCII math (`x^2`, `3/5`, `sqrt(2)`, `!=`, `<=`) outside `$...$`.
+- Wrap key target terms in `\htmlId{step2_rhs}{...}` (only on referenced tokens—do not pollute unreferenced words) so steps, breakdowns, and `edit.rub` substitutions anchor cleanly.
 
-3.2 **Deterministic Verification Before Commit:**
-- Every mathematical/scientific calculation, unit conversion, graph landmark, `Check` step, and multiple-choice distractor must pass **`theta_calc`** verification with zero intermediate rounding drift before entering `.raphs`.
-- Every solution closes with a clear **Exact Verification / Sense Check** (or self-marking rubric for open writing) so the learner sees how to confirm their answer with 100% confidence.
+3.2 **Mandatory Anti-Clash Rules for Diagrams, Tables & Callouts:**
+1. **Transparent Labels Only:** Never place opaque white background boxes behind coordinate, vertex, or diagram labels (opaque boxes clip ugly holes over Carbon's `#DAE4F0` grid). Place external dimension/vertex labels cleanly outside shape perimeters.
+2. **Fine Strokes Only (`1.0–1.75 pt`):** Never use thick heavy borders (`> 2.2 pt`) that overpower `Lato` text or KaTeX math.
+3. **Clean Table Cell & Sub-Token Highlights:** Pair soft pastel `cellStyles` fills (`#DCFCE7`, `#DBEAFE`, or `#FEF3C7`) with concise `focus.annotate` (`"kind": "check"` or `"label"`).
+4. **No Duplicate `✓` Inside `"kind": "check"`:** **NEVER** include a literal `✓`, `✔`, `✅`, or `\checkmark` inside `label` when `focus.annotate` uses `"kind": "check"` (Carbon already draws a crisp corner tick).
+5. **Transient Intermediate Callouts:** Mark intermediate step callouts `"transient": true` (or `edit.erase` them on later steps) so leader lines never pile up. Keep semantic clue colors consistent across steps.
+6. **Clean Regeneration:** Never invent extra deduced labels inside a question stimulus figure; regenerate all graphs/geometry/tables/clocks/nets natively in Carbon (`scene.place2D` / `scene.place3D`) and recreate real photographs as clean generated assets in `course_media_assets`.
+
+---
+
+## 4. Structure for Carbon's 3-Group Bottom Bar & Navigation
+
+Structure every question & solution part (`a`, `b`, ...) to drive Carbon's 3-Group Bottom Bar (`Timers` | `(a)(b) + Step i/N + Break step down + Reveal Answer` | `Back / Next Question`):
+1. **`questionStem`:** `pane: "left"`, `zone: "spine"` (`style: "typeset"`), plus any stimulus figure in `zone: "diagram"` and compact `A–E` choices.
+2. **`steps[]` (`totalSteps: N`, `0`-indexed `activeStep`):** Concise vertical working steps (`pane: "right"`, `zone: "spine"`, `anchor: { "mode": "below", "targetId": "...", "align": "equals" }`), paired with Question-Relative `sublevels` (`9 → 1`) for SIGMA.
+3. **`substeps[]` per step (`breakdownAvailable: true`):** Finer explanation cards (`zone: "scratch"`, `c1` `#EFF6FF` fill + `#3B82F6` border or `c5` `#F5F3FF` fill + `#8B5CF6` border) revealed on `"step.navigated"` (`action: "breakdown"`).
+4. **`finalAnswer`:** Crisp summary line or `c2` `#F0FDF4` fill + `#16A34A` border answer card + `"kind": "check"` annotation, revealed on the final step or on `"answer.toggled"` (`revealed: true`).
+5. **`chrome.update` Sync:** Always keep `activeItemId`, `itemLabel`, `partTabs`, `activePartId`, `totalSteps`, `activeStep`, `activeSubstep`, `breakdownAvailable`, and `answerRevealed` synchronized.
+
+---
+
+## 5. Compliance, Anonymization & Verification (Non-Negotiable)
+
+5.1 **100% Source Anonymity Inside `.raphs`:**
+- **Never** include school names, exam board names, publisher titles, sitting dates, or source PDF filenames anywhere inside `<product>-<subject>.raphs`. Raw crops live **only** in Git-ignored `private-xref.json` and `archive/`.
+
+5.2 **Deterministic Verification Before Commit:**
+- Every calculation, unit conversion, graph landmark, `Check` step, and `A–E` MCQ distractor must pass **`theta_calc`** verification with zero intermediate rounding drift before entering `.raphs`.

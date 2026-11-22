@@ -9,7 +9,7 @@
 
 | Phase | Milestone Title | Status |
 | :---: | :--- | :---: |
-| **Phase 1** | Workspace Infrastructure & Core Sibling Wiring (`memory_core_rs` + `theta_calc` + `Carbon`) | `[ ] Pending` |
+| **Phase 1** | Workspace Infrastructure & Core Sibling Wiring (`memory_core_rs` + `theta_calc` + `Carbon`) | `[x] Complete` |
 | **Phase 2** | Domain Blueprints, Quality Gates, PDF Slicer & CLI *(Enables Antigravity Authoring)* | `[ ] Pending` |
 | **Phase 3** | Native Rust Gemini 4 Agentic Compiler *(Enables Rust API Single & Batch Authoring)* | `[ ] Pending` |
 | **Phase 4** | Minimal Hydrogen Web Console (`axum` + HTML/TS) & Live Carbon/Theta Bridge | `[ ] Pending` |
@@ -61,21 +61,19 @@
 ### Phase 1 Sub-Steps
 - [x] **1.0 Pedagogical & Visual Rules Hierarchy (`rules/`):**
   - Created 4-tier strictly product-isolated rules tree (`rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/{common,levels}.md`) covering `gyaraplus` (`maths` Algebra-First, `english`, `verbal-reasoning`, `non-verbal-reasoning`), `gcse` (`maths` Foundation/Higher + `physics`), `alevel` (`maths` + `physics`), `primary`, and `infant`.
-- [ ] **1.1 Product & Subject Directory Scaffolding & Brand Assets:**
+- [x] **1.1 Product & Subject Directory Scaffolding & Brand Assets:**
   - [x] Place Git-tracked `Gyara+` brand logos in `products/gyaraplus/assets/` (`gyara-white.png`, `gyara-blue.png`, `gyara-white.svg`, `gyara-blue.svg`) and ensure `.gitignore` keeps `products/` tracked while ignoring `products/**/inbox/`, `products/**/archive/`, `products/**/private-xref.json`, `.env`, `.keys.json`, and SQLite/`.raphs` binaries.
-  - [ ] Standardize remaining `products/gyaraplus/` (`inbox/{maths,english,verbal-reasoning,non-verbal-reasoning}`, `archive/{maths,...}`) and `products/gcse/{assets,maths,physics}` directories.
-- [ ] **1.2 Rust Project & Configuration Setup (`Cargo.toml` & `src/config.rs`):**
-  - Initialize the `hydrogen` Rust crate (Edition 2024: `tokio`, `axum`, `serde`, `serde_json`, `clap`, `tokio-tungstenite`, `reqwest`, `tracing`).
-  - Wire dependencies to **`theta_calc`** (`path = "/home/raphspark/projects/theta/crates/calc-api"`), **`memory_core_rs`** (`git = "ssh://git@github.com/raphs-app/raphs.git", tag = "memory-core-1.7.0"`), and **`carbon-protocol`** (`git = "ssh://git@github.com/raphsaeed/carbon.git", branch = "main"`).
-  - Implement configuration loader (`hydrogen.toml` + environment variables for `GEMINI_API_KEY`, default Lesson Key, Carbon WebSocket URL `ws://127.0.0.1:7420/carbon`, and `axum` port `7430`).
-- [ ] **1.3 `L7` Vault Wrapper & Brand Logo Blob Seeding (`src/vault/`):**
-  - Implement thread-safe `VaultManager` (`tokio::sync::Mutex<Memory>`) handling live `<name>.sqlite` + `<name>.keys.json` containers and `.raphs` bundle `pack` / `unpack`.
-  - Initialize `gyara-maths.raphs` with `CourseMetaInput` (`course_id: "GYR-MTH"`, `default_answer_format: "mcq"`, `theta_preset: "uk_gcse"`), embed `products/gyaraplus/assets/gyara-white.png` (`GYR-LOGO-WHITE`) and `gyara-blue.png` (`GYR-LOGO-BLUE`) into `course_media_assets` (`blobs`) + `course_meta.config_json.branding` (`subjectColor: "#2563EB"`, `importantIcon: "triangle"`), and seed baseline 11+ Maths `course_topics` (*Number*, *Fractions/Decimals/Percentages*, *Ratio & Proportion*, *Algebra*, *Measurement*, *2D & 3D Geometry*, *Statistics & Probability*) and initial `course_question_types`.
-- [ ] **1.4 In-Process `Theta` Integration (`src/theta/`):**
-  - Implement `ThetaService` wrapping `theta_calc` (`calc_eval`, `calc_solve`, `calc_formula`, `calc_transform`, `calc_stats`, `calc_analyze_graph`) with stage presets (`allow_mixed_fractions: true`, `angle_mode: "deg"`, `anchor_tokens: true` for 11+ Maths).
-  - Add smoke tests verifying exact rational arithmetic, mixed fractions, and `\htmlId` KaTeX generation.
-- [ ] **1.5 `Carbon` WebSocket Client & Ping/State Handshake (`src/carbon/`):**
-  - Implement async `CarbonClient` connecting to `ws://127.0.0.1:7420/carbon`, receiving `board.ready`, sending `ping` / `getState` / `batch`, and streaming live `ServerMessage::Event`s.
+  - [x] Standardize remaining `products/gyaraplus/` (`inbox/{maths,english,verbal-reasoning,non-verbal-reasoning}`, `archive/{maths,...}`) and `products/gcse/{assets,inbox,archive}` directories.
+- [x] **1.2 Lean Pure-Rust Project & Configuration Setup (`Cargo.toml` & `src/config.rs`):**
+  - Initialized `hydrogen` crate (Edition 2024, `unsafe_code = "forbid"`, `unwrap_used = "deny"`, `expect_used = "deny"`, `panic = "deny"`), avoiding `clap`/`config`/`anyhow` bloat (pure `std::env::args` CLI + pure-Rust `.env` & `hydrogen.toml` loader).
+  - Wired dependencies to **`theta_calc`** (`path = "/home/raphspark/projects/theta/crates/calc-api"`, `default-features = false`), **`memory_core_rs`** (`git = "ssh://git@github.com/raphs-app/raphs.git", tag = "memory-core-1.7.0"`), and **`carbon-protocol`** (`git = "ssh://git@github.com/raphsaeed/carbon.git", branch = "main"`).
+- [x] **1.3 `L7` Vault Wrapper & Brand Logo Blob Seeding (`src/vault/`):**
+  - Implemented thread-safe `VaultManager` (`tokio::sync::Mutex<Memory>`, Conformance Rule A6) handling live `<name>.sqlite` + `<name>.keys.json` containers, `.raphs` bundle `pack` / `unpack`, and `export_clean_course_bundle`.
+  - Initialized `gyara-maths.raphs` (`course_id: "GYR-MTH"`, `default_answer_format: "mcq"`, `theta_preset: "uk_gcse"`), embedded `GYR-LOGO-WHITE` (`gyara-white.png`, `679x258`) and `GYR-LOGO-BLUE` (`gyara-blue.png`, `679x258`) + SVG sources into `course_media_assets` (`blobs`) + `course_meta.config_json.branding`, and seeded 7 baseline 11+ Maths strands (`course_topics`) and 9 problem archetypes (`course_question_types`).
+- [x] **1.4 In-Process `Theta` Integration (`src/theta/`):**
+  - Implemented `ThetaService` wrapping `theta_calc` (`calc_eval`, `calc_solve`, `calc_formula`, `calc_transform`, `calc_stats`, `calc_analyze_graph`, `dispatch_tool_json`) with stage presets (`allow_mixed_fractions: true` supporting both LaTeX `2\frac{3}{4}` and ASCII `2 3/4`, `angle_mode: "deg"`, `anchor_tokens: true`), exact equivalence checks, and 5-option `A–E` MCQ distractor gate.
+- [x] **1.5 `Carbon` WebSocket Client, Full-Stage Catalog Projector & Handshake (`src/carbon/`):**
+  - Implemented async `CarbonClient` (`ws://...:7420/carbon` + `project_full_stage_catalog`) verifying `board.ready`, `ping`/`pong`, atomic `config.setTheme("warm-paper")` + `chrome.update` + `chrome.setCatalog` (`displayMode: "full-stage"`, 4 soft-light `Gyara+` subject cards `#5B7DB1`/`#4D8B7A`/`#7A6BA8`/`#A8647A`, `GYR-LOGO-BLUE` data URI), `getState`, and live `ServerMessage::Event` streaming.
 
 > **Phase 1 Exit Check:** `cargo test` passes; `hydrogen doctor` confirms `theta_calc` (`< 1 ms`), opens/creates `gyara-maths.raphs` at Schema `2.3.0`, and handshakes with a running `carbon-shell`.
 
@@ -89,8 +87,8 @@
   - Implement `UniversalId` parser/builder (`GYR-MTH-P001-Q014`, replicas `-R01`, chapters `B01-CH03`, cards `-C01`, sub-addressing `:a:S01:L09`).
   - Implement `QuestionBlueprint` (`question_json`) and `SolutionBlueprint` (`solution_json`: multi-part state, `Steps × Sub-Levels 9..1`, Carbon commands, Theta checks, MCQ trap diagnostics, and SIGMA narration scripts) matching [`solution-levels.md`](./solution-levels.md) §6.
 - [ ] **2.2 Deterministic Quality Gate (`src/compiler/gate.rs`):**
-  - **Theta Math Gate:** Verify every `thetaVerification` check, multi-part `exportedExact` chain, `Check ✔` equivalence, and 5-option (`A–E`) MCQ uniqueness (all 5 distinct, exactly 1 equal to `answerKey.exactValue`).
-  - **Carbon Command & KaTeX Gate:** Verify no unescaped ASCII math leaks outside `$...$`, valid canonical Carbon §5.1–§5.2 enums, valid `targetId` / `\htmlId` ordering, and optional `carbon-shell --headless` dry-run `ack.ok == true`.
+  - **Theta Math Gate:** Verify every `thetaVerification` check, multi-part `exportedExact` chain, `Check` equivalence, and 5-option (`A–E`) MCQ uniqueness (all 5 distinct, exactly 1 equal to `answerKey.exactValue`).
+  - **Carbon Command, Warm-Paper Theme & KaTeX Gate ([`carbon-visual-theme.md`](./carbon-visual-theme.md)):** Verify no unescaped ASCII math leaks outside `$...$`, valid canonical Carbon enums (`zone: "spine" | "scratch" | "diagram"`, `style: "typeset"`, `content`), `c1..c8` editorial ink/card tokens (rejecting dark fills or invisible white/yellow ink on `#FDFCF9` paper), diagram stroke widths `<= 2.2 pt`, zero literal `✓`/`✔` inside `"kind": "check"` labels, PNG-only `brandLogo`/`logo`, and valid `targetId` / `\htmlId` ordering.
   - **Pedagogical & Clean-Room Lint:** Enforce contiguous `9 → min_sublevel` numbering, anti-prose-wall word caps on board callouts, non-identical adjacent levels, and zero external paper names/raw scans.
 - [ ] **2.3 Clean-Room PDF/Image Slicer & `private-xref.json` (`src/ingest/`):**
   - Render PDF pages to high-DPI working images in `archive/` (never inside `.raphs`), slice individual question/diagram crops, and record `{ universal_id, source_file, page, bbox }` in `private-xref.json`.
@@ -132,14 +130,14 @@
   - REST endpoints for vault selection, `CourseCatalogSnapshot`, question/level inspection, private source-crop serving (`private-xref.json`), job triggers (ingest, regenerate, comment fix, replica), and live WebSocket progress/event push.
 - [ ] **4.2 Bidirectional Live Carbon Author Bridge (`web/` Localhost WS + `src/carbon/bridge.rs` LAN WS):**
   - Support connecting to the Mac's running `carbon-shell` either directly from the Mac browser (`ws://127.0.0.1:7420/carbon`) or from Hydrogen's Rust backend over LAN (`ws://<mac-ip>:7420/carbon`).
-  - Push `chrome.update` (`authorMode: true`) + `chrome.setCatalog` (`displayMode: "full-stage"` & `"slide-over"`, `brandLogo` `data:image/png;base64,...` from `GYR-LOGO-WHITE`, `importantIcon: "triangle"`, `AI` replica `tagBadges`, and 3-level drill-down built from `CourseCatalogSnapshot`) to Carbon.
+  - Push `config.setTheme("warm-paper")` + `chrome.update` (`authorMode: true`) + `chrome.setCatalog` (`displayMode: "full-stage"` & `"slide-over"`, `brandLogo` `data:image/png;base64,...` from `GYR-LOGO-BLUE`, `importantIcon: "triangle"`, `AI` replica `tagBadges`, and 3-level drill-down built from `CourseCatalogSnapshot`) to Carbon.
   - Handle live Carbon events:
     - `catalog.itemSelected` $\to$ load clicked Question or Topic Card onto Carbon,
     - `comment.saved` $\to$ persist comment + `Snap Board` PNG blob straight into `gyara-maths.raphs` (`upsert_course_comment`) and notify the Web UI live,
     - `comment.deleted` $\to$ remove comment in `gyara-maths.raphs`,
     - `catalog.actionRequested` (`"create-replica"`) $\to$ queue replica job in Hydrogen.
-- [ ] **4.3 Minimal 4-View Light, Soft Card-Grid HTML/TypeScript Frontend (`web/`):**
-  - Implement a **light, soft card-grid theme** (`#F6F7FB` soft porcelain canvas, `#FFFFFF` elevated cards with `#E2E8F0` borders & subtle shadows, centered `Gyara+` **`GYR-LOGO-BLUE`** header logo loaded from the `.raphs` vault, `[🏠] > [Subject] > [Paper]` pill breadcrumbs, soft filter pills, Subject Vault Cards, and soft-tinted Paper/Question cards: `#EFF6FF` compiling, `#ECFDF5` verified, `#FEF2F2` open-comment/attention highlight, and `#EDE9FE` soft violet `AI` replica badges):
+- [ ] **4.3 Minimal 4-View Warm-Paper Editorial HTML/TypeScript Frontend (`web/`):**
+  - Mirror Carbon's **Warm-Paper Light Editorial Theme** ([`carbon-visual-theme.md`](./carbon-visual-theme.md): `#FDFBF7` warm ivory canvas, `#F2ECE1` warm stone header with `#DBD2C2` border & `#FCF9F2` stadium pills, `#1F2421` charcoal ink, centered PNG **`GYR-LOGO-BLUE`** loaded from the `.raphs` vault, soft-mineral Subject Cards `#5B7DB1`/`#4D8B7A`/`#7A6BA8`/`#A8647A`, and 4-state cards: `#FFFFFF` default, `#F1F6FD` in-progress, `#F0FBF4` verified, `#FFF1F2` soft rose-blush for open `fix` comments, and `#6D5CAE` `AI` replica badges):
   - **View 1 — Vault Browser & Light-Soft Card Grid:** Drill down Subject Vaults $\to$ 3–4 col Papers/Chapters/Topics grid $\to$ 4–6 col Question cards; filter by Real Papers, `AI` Practice, Topic, Question Type, Difficulty (`1–5`), `MCQ`/`Written`, and Open Comments.
   - **View 2 — Question, `9 → 1` & Source Crop Inspector:** Side-by-side private PDF crop vs. compiled question; interactive Step & Sub-Level (`9..1`) selector with 1-click **"Send / Step Live on Carbon"**, **"Regenerate with Prompt"**, and **"Create Replica"** buttons.
   - **View 3 — Comments & Screenshots Inbox:** View open/resolved Carbon comments + `Snap Board` screenshots, edit notes, trigger fixes, and inspect `course_question_revisions` diffs.

@@ -310,6 +310,45 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
    - **`authorMode` (`bool`, default `false`):**
      - **`false` (Public / Student Mode):** End users only see a clean Feedback box (plain text + **1-Click `"Snap Board"`** + **Image/PDF upload or paste**) and standard learner `⋮` card options (`Not Attempted` / `In Progress` / `Completed`, `△ Important`, `0d..15d` Reminder). Zero internal authoring categories, open/resolved triage filters, or replica actions are visible or accepted.
      - **`true` (Authorised Owner / Admin Session):** Unlocks author comment `kind` pills (`"fix"`, `"replica"`, `"topic"`, `"note"`, `"engine"`), `All | Pending | Done` filter, Resolve/Reopen toggle, automatic `activeStepId` / `authorMeta` stamping, and card `⋮` author actions (`"create-replica"`, emitting `catalog.actionRequested`).
+   - **External Driver-Streamed Solution, Step & Question Transport (`step.navigated`, `part.selected`, `answer.toggled`, `item.navigated`, `stepAction.requested`) + Keyboard Shortcuts:**
+     - Carbon's bottom bar is organized into **three visually separated control groups**:
+       1. **Timers Group:** `SESSION` + `ITEM` Dual Smart Timers
+       2. **Solution / Step Controls Group:** `(a)`/`(b)` Part Tabs + `|◀` `◀` `Step i / N` `▶` + `Break step down` (or `stepActions` chips) + `Reveal Answer`
+       3. **Question Navigation Group:** `◀ Back` + `Next ▶` (switches directly between questions, while `(a)`/`(b)` tabs switch between parts of the current question)
+     - **Hardware Keyboard Shortcuts (Active on Working Board):**
+       - **`Left Arrow` / `Right Arrow`:** Move backward / forward between solution steps (emits `"step.navigated"`).
+       - **`Shift + Left Arrow` / `Shift + Right Arrow`:** Switch directly to the previous / next question (emits `"item.navigated"`).
+     - **Full `SIGMA` Direct Jump Control:** At any moment, `SIGMA` can jump directly to *any* question, *any* part (`(a)`, `(b)`, ...), and *any* step by sending `chrome.update` (`activeItemId`, `itemLabel`, `partTabs`, `activePartId`, `totalSteps`, `activeStep`, `activeSubstep`, `answerRevealed`) paired with board `scene.*` commands (and `chrome.setCatalogOpen: { "open": false }` if jumping from the Index).
+     - Clicking any bottom-bar button (or pressing the keyboard / trackpad shortcuts) immediately emits a WebSocket event so `SIGMA` streams the corresponding board content:
+       - **`|◀` / `◀` / `▶` / `Break step down` (or `Left` / `Right` Arrow)** $\to$ emits **`"step.navigated"`**:
+         ```json
+         {
+           "action": "next",
+           "itemId": "GYR-MTH-P008AI-Q04",
+           "partId": "a",
+           "stepId": "step-2",
+           "activeStep": 1,
+           "totalSteps": 4,
+           "activeSubstep": null,
+           "handledLocally": false
+         }
+         ```
+         (`action`: `"first"` | `"back"` | `"next"` | `"breakdown"`; when `"action": "breakdown"`, `activeSubstep` increments `0, 1, 2...` so `SIGMA` knows which breakdown depth was requested; `"handledLocally": false` tells `SIGMA` no local checkpoint existed so `SIGMA` should push the step's `scene.write` / `scene.place2D` / `edit.erase` commands.)
+       - **`(a)` / `(b)` Part Tabs** $\to$ emits **`"part.selected"`** (`{ "itemId": "GYR-MTH-P008AI-Q04", "partId": "b" }`).
+       - **`Reveal Answer` / `Answer Shown`** $\to$ emits **`"answer.toggled"`** (`{ "itemId": "GYR-MTH-P008AI-Q04", "partId": "a", "revealed": true }`).
+       - **`◀ Back` / `Next ▶` Question Navigation (or `Shift + Left` / `Shift + Right` Arrow)** $\to$ emits **`"item.navigated"`**:
+         ```json
+         {
+           "direction": "next",
+           "itemId": "GYR-MTH-P008AI-Q04",
+           "partId": "a",
+           "paperId": "P008AI",
+           "topicId": null,
+           "subjectId": "maths"
+         }
+         ```
+         (`direction`: `"previous"` | `"next"`; switches directly to the previous/next question in the active paper or chapter, while `SIGMA` retains full control over what question/part/section is displayed next.)
+       - **Custom `stepActions` chips** $\to$ emits **`"stepAction.requested"`** (`{ "actionId": "...", "targetTokenId": "...", "pane": "right" }`).
 
 2. **`chrome.timer`** — Controls the **Session** or **Item** Dual Smart Timer:
    ```json
@@ -384,19 +423,30 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
 
 5. **Full-Page Course & Book Index Gallery (`chrome.setCatalog`, `chrome.patchCatalogItem`, `chrome.setCatalogOpen`):**
    - **100% Full-Stage Landing & Navigation Overlay (`displayMode: "full-stage"` default):**
-     - Covers **100% of the Carbon window** across both panes on a crisp dark-slate gallery backdrop (`#151A24`), giving generous multi-column breathing room for **Hero Subject Cards**, a **3–4 column Practice Papers / Chapters & Topics Grid**, and a **4–6 column Question & Concept Cards Grid**.
-     - **Direct Blank / Scratchpad Board Access:** If `SIGMA` boots Carbon without calling `chrome.setCatalog` (or passes `"open": false`), Carbon starts directly on the clean whiteboard. Whenever the Full-Page Index *is* open, a persistent top-right **`Open Whiteboard` / `Return to Board ✕`** button lets the user dismiss the Index onto an empty or active whiteboard without selecting a subject or question.
-   - **3-Level Breadcrumb Flow + `SIGMA` Logos (`brandLogo` & per-Subject `logo`):**
-     - **Top Bar:** `[🏠]` `>` `[Subject Pill]` `>` `[Practice Papers | Chapters & Topics | Stats]` `>` `[Active Paper / Chapter]` on the left, **`SIGMA` `brandLogo`** (inline `<svg>`, `data:image/...`, or `local://` PNG rasterized offline onto GPU textures) centered, and **`[Open Whiteboard ✕]`** on the right.
-     - **Level 1 (`"subjects"`):** Renders `1..N` dynamic hero cards from `SIGMA`'s `availableSubjects` (never a fixed count—auto-centers `1–4` cards or wraps into a scrollable grid for `5+` subjects), each showing its custom jewel-toned fill, `logo` (or `brandLogo`), title, and optional paper/due summary. Clicking a Subject emits `catalog.itemSelected` (`kind: "subject"`).
-     - **Level 2 (`"subject-root"`):** Full-width multi-column grid of `SIGMA`'s `papers` (`Practice Paper 01`..`N`), `topics` (`Chapters → Topics`), or `stats`, with dynamic `SIGMA` `filterTags` (e.g. `All`, `Real papers`, `AI practice`) alongside `Important △`, `Reminders`, `In Progress`, `Completed`, and instant search.
-     - **Level 3 (`"paper-detail"` / `"topic-detail"`):** Multi-column Question & Concept Card grid (`Q1`..`QN`) + clickable bottom **`📊 Progress`** summary bar. Clicking a Question card emits `catalog.itemSelected` (`kind: "question"`) and lands cleanly on the working whiteboard.
-   - **4-State Visual Card Colour Semantics & `⋮` Three-Dot Card Menu:**
-     - **Not Attempted (`"default"`):** Crisp White card (`#FFFFFF`) with dark ink.
-     - **In Progress (`"in-progress"`):** Soft Slate-Blue card (`#CBD5E1` / `#DBEAFE`).
-     - **Completed (`"completed"`):** Clean Sage-Emerald card (`#DCFCE7` + `✓`).
-     - **Repeat Due Today / Overdue (`dueReminder: true` on question, or `dueCount > 0` on paper):** **Deep Crimson (`#6B1414`)** with crisp white text (`repeat due (15d)` / `2 due`), while future scheduled reminders (`reminder: "15d"`, `dueReminder: false`) keep their normal card colour with a subtle pink `15d` chip.
-     - **`⋮` Three-Dot Menu on Cards:** Clicking **`⋮`** opens an anchored menu directly on the card for `Not Attempted / In Progress / Completed` (`status.changed`), `△ Important` (`important.toggled`), `0d..15d` Reminder (`reminder.changed`), plus **`+ Create Replica`** (`catalog.actionRequested`) strictly when `authorMode == true`.
+     - Covers **100% of the Carbon window** across both panes on Carbon's cohesive **White / Warm-Paper Board Theme** (`pal.left_paper_bg` canvas + `pal.chrome_bg` topbar + smooth `Lato-Bold` / `Lato-Regular` typography), with centered non-stretching **Compact Soft-Pastel Subject Cards (`268 × 104 pt`)**, a **4-column Practice Papers / Chapters & Topics Grid**, and a **6-column Question & Concept Cards Grid**.
+     - **Direct Blank / Scratchpad Board Access:** If `SIGMA` boots Carbon without calling `chrome.setCatalog` (or passes `"open": false`), Carbon starts directly on the clean whiteboard. Whenever the Full-Page Index *is* open, a persistent top-right **`Open Blank Board` / `Board · Q4`** button lets the user dismiss the Index onto an empty or active whiteboard without selecting a subject or question.
+   - **3-Level Breadcrumb Flow + `SIGMA` / `Hydrogen` PNG Logos & Multi-Subject Colours:**
+     - **Top Bar:** `[🏠]` `>` `[Subject Pill]` `>` `[Practice Papers | Chapters & Topics | Stats]` *(customizable via optional `tabLabels: { "papers", "topics", "stats" }`)* `>` `[Active Paper / Chapter]` on the left, **`brandLogo`** (**transparent `2×` Retina `PNG`** via `data:image/png;base64,...` or `local://.../logo.png` so custom calligraphy/brand typography never alters; never SVG) centered, and **`[Open Blank Board]`** on the right.
+     - **Level 1 (`"subjects"` — `1..N` Subject Grid, Colours & Per-Subject Logos):**
+       - **Layout:** Renders `1..N` dynamic non-stretching cards from `availableSubjects` (`268 × 104 pt` fixed size, up to `4` columns per row — e.g. `12` subjects form a clean `4 × 3` centered grid with vertical scrolling as needed). Clicking a Subject emits `catalog.itemSelected` (`kind: "subject"`).
+       - **Per-Subject Colour Resolution (`availableSubjects[i].color`):**
+         1. `Hydrogen` / `SIGMA` can explicitly set `"color": "#RRGGBB"` on each entry in `availableSubjects[]` (as well as `topics[]`, `papers[]`, `cards[]`, and `stats`).
+         2. If `"color"` is omitted (`null`), Carbon cycles through a `6`-colour muted mineral fallback table (`idx % 6`: Slate Blue `#5B7DB1`, Eucalyptus Sage `#4D8B7A`, Wisteria Lavender `#7A6BA8`, Dusty Rose `#A8647A`, Warm Ochre `#A37E58`, Mist Cyan `#568A9E`). When serving more than `6` subjects (e.g. `12` subjects), `Hydrogen` should supply a distinct muted hex `"color"` per subject so subjects `7–12` do not repeat `1–6`.
+         3. Every Subject card accent is automatically softened via `soft_subject_style` (`13%` blended into `#FFFFFF` for the card fill, `42%` into `#D8E0EA` for the border, `68%` into the left accent ribbon, and darkened for the `Lato-Bold` title ink) so cards always stay cohesive and legible even if a vivid hex is supplied.
+       - **Title-Bar `brandLogo` vs Individual Per-Subject `logo`:**
+         - Top-level `brandLogo` renders in the **Title Bar**, while each `availableSubjects[i]` supports its own independent `logo` PNG cached in GPU texture memory:
+           - `"logo": "data:image/png;base64,..."` (or `local://.../subj.png`) $\to$ renders that subject's **individual PNG logo** on its card while the Title Bar continues showing `brandLogo`.
+           - `"logo": null` (or omitted) $\to$ falls back to `brandLogo` on that Subject card.
+           - `"logo": ""` (empty string) $\to$ suppresses the `brandLogo` fallback so the Subject card renders cleanly **without** any logo.
+         - Note: Individual `logo` images are currently supported on **Title Bar (`brandLogo`)** and **Subject Cards (`availableSubjects[].logo`)**; `topics[]` (`CatalogTopicNode`) and `papers[]` (`CatalogPaper`) render clean typography, badges, and `color` accents without per-topic/paper `logo` fields.
+     - **Level 2 (`"subject-root"`):** Centered non-stretching grid of `SIGMA`'s `papers` (`Practice Paper 01`..`N`), `topics` (`Chapters → Topics`), or `stats`, with dynamic `SIGMA` `filterTags` (e.g. `All`, `Real papers`, `AI practice`) alongside `Important △`, `Reminders`, `In Progress`, `Completed`, and instant search.
+     - **Level 3 (`"paper-detail"` / `"topic-detail"`):** Centered non-stretching Question & Concept Card grid (`Q1`..`QN`) + clickable bottom **`Progress`** summary bar. Clicking a Question card emits `catalog.itemSelected` (`kind: "question"`) and lands cleanly on the working whiteboard.
+   - **4-State White-Theme Card Colour Semantics & `⋮` Three-Dot Card Menu:**
+     - **Not Attempted (`"default"`):** Crisp White card (`#FFFFFF` + `#DEE4EC` hairline) with dark charcoal ink.
+     - **In Progress (`"in-progress"`):** Soft Ice-Slate card (`#F1F6FD` + `#BAD4F7` border).
+     - **Completed (`"completed"`):** Soft Mint-Sage card (`#F0FBF4` + `#B2E8C6` border + `✓`).
+     - **Repeat Due Today / Overdue (`dueReminder: true` on question, or `dueCount > 0` on paper):** **Classy Soft Rose-Blush (`#FFF1F2` + `#FBABB8` border)** with deep rose-burgundy text (`repeat due (15d)` / `2 due`), while future scheduled reminders (`reminder: "15d"`, `dueReminder: false`) keep their normal card colour with a subtle rose `15d` chip.
+     - **`⋮` Three-Dot Menu on Cards:** Clicking **`⋮`** opens a crisp white elevated popover directly on the card for `Not Attempted / In Progress / Completed` (`status.changed`), `△ Important` (`important.toggled`), `Off..15d` Reminder (`reminder.changed`), plus **`+ Create Replica`** (`catalog.actionRequested`) strictly when `authorMode == true`.
 
    - **`chrome.setCatalog` — Load Dynamic Subjects, Papers, Chapters/Topics, Logos & Stats:**
      ```json
@@ -413,7 +463,7 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
          "activeItemId": "GYR-MTH-P008AI-Q04",
          "autoCollapseOnSelect": true,
          "importantIcon": "triangle",
-         "brandLogo": "<svg viewBox='0 0 180 48' xmlns='http://www.w3.org/2000/svg'>...</svg>",
+         "brandLogo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
          "vaultTitle": "11+ Maths",
          "vaultSubtitle": "Practice Papers, Chapters & Topics",
          "filterTags": [
@@ -421,10 +471,10 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
            { "id": "ai", "label": "AI practice" }
          ],
          "availableSubjects": [
-           { "id": "maths", "title": "Maths", "badge": "11+", "color": "#2563EB", "logo": null, "progressText": "23 Papers", "dueCount": 9 },
-           { "id": "english", "title": "English", "badge": "11+", "color": "#0D9488", "progressText": "18 Papers", "dueCount": 2 },
-           { "id": "vr", "title": "Verbal Reasoning", "badge": "11+", "color": "#7C3AED", "progressText": "16 Papers", "dueCount": 0 },
-           { "id": "nvr", "title": "Non-Verbal Reasoning", "badge": "11+", "color": "#DB2777", "progressText": "16 Papers", "dueCount": 1 }
+           { "id": "maths", "title": "Maths", "badge": "11+", "color": "#5B7DB1", "logo": null, "progressText": "23 Papers", "dueCount": 9 },
+           { "id": "english", "title": "English", "badge": "11+", "color": "#4D8B7A", "progressText": "18 Papers", "dueCount": 2 },
+           { "id": "vr", "title": "Verbal Reasoning", "badge": "11+", "color": "#7A6BA8", "progressText": "16 Papers", "dueCount": 0 },
+           { "id": "nvr", "title": "Non-Verbal Reasoning", "badge": "11+", "color": "#A8647A", "progressText": "16 Papers", "dueCount": 1 }
          ],
          "papers": [
            {
@@ -965,6 +1015,10 @@ Once parameters are defined via `reactive.defineParams`, you can reference them 
 | `shape2d.changed` | Student drags a 2D geometry/graph handle | `objectId`, `handleId`, `coords`, `boundParams`, `phase`, `pane` |
 | `shape3d.changed` | Student drags a 3D ray-constrained handle | `objectId`, `handleId`, `coords`, `boundParams`, `phase`, `pane` |
 | `marginCard.toggled` | Student collapses/expands a margin card | `objectId`, `collapsed`, `source`, `pane` |
+| `step.navigated` | User clicks `\|◀` (`first`), `◀` (`back`), `▶` (`next`), `Break step down` (`breakdown`), presses `Left`/`Right` Arrow, or swipes steps horizontally | `action` (`first`\|`back`\|`next`\|`breakdown`), `itemId`, `partId`, `stepId`, `activeStep`, `totalSteps`, `activeSubstep`, `handledLocally` |
+| `part.selected` | User clicks a multi-part tab (`(a)`, `(b)`, ...) in the bottom bar | `itemId`, `partId` |
+| `answer.toggled` | User clicks `Reveal Answer` / `Answer Shown` in the bottom bar | `itemId`, `partId`, `revealed` |
+| `item.navigated` | User clicks `◀ Back` (`previous`) / `Next ▶` (`next`) or presses `Shift + Left` / `Shift + Right` Arrow | `direction` (`previous`\|`next`), `itemId`, `partId`, `paperId`, `topicId`, `subjectId` |
 | `stepAction.requested` | Student clicks a contextual `StepActionChip` | `actionId`, `targetTokenId`, `pane` |
 | `timer.sessionExpired` | Session countdown hits `00:00` | `configuredSec`, `overtimeSec` |
 | `timer.itemExpired` | Item countdown hits `00:00` | `configuredSec`, `overtimeSec` |
@@ -997,6 +1051,10 @@ Sent by classroom LAN iPads, custom native shells (`visage-ios`), or automated t
 | `dragShape2DHandle` | `objectId`, `handleId`, `coords: [x, y]`, `phase`, `pane` | `shape2d.changed` (+ `param.changed` if bound) |
 | `dragShape3DHandle` | `objectId`, `handleId`, `coords: [x, y, z]`, `phase`, `pane` | `shape3d.changed` (+ `param.changed` if bound) |
 | `toggleMarginCard` | `objectId`, `collapsed: bool`, `pane` | `marginCard.toggled` |
+| `navigateStep` | `action` (`first`\|`back`\|`next`\|`breakdown`) | `step.navigated` |
+| `selectPart` | `partId` | `part.selected` |
+| `toggleAnswer` | `revealed` *(opt bool)* | `answer.toggled` |
+| `navigateItem` | `direction` (`previous`\|`next`) | `item.navigated` |
 | `requestStepAction` | `actionId`, `targetTokenId` *(opt)*, `pane` | `stepAction.requested` |
 | `saveComment` | `entry: FeedbackEntry` | `comment.saved` |
 | `deleteComment` | `commentId` *(opt)*, `itemId`, `partId` *(opt)* | `comment.deleted` |

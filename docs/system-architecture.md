@@ -7,7 +7,7 @@
 > - Hydrogen Product Requirements: [`requirements.md`](./requirements.md)
 > - Pedagogical & 9-Level Solution Rules: [`solution-levels.md`](./solution-levels.md) + [`../rules/README.md`](../rules/README.md)
 > - Phased Implementation Plan: [`build-plan.md`](./build-plan.md)
-> - Sibling Contracts: [`theta-integration.md`](./theta-integration.md) · [`carbon-integration.md`](./carbon-integration.md) · [`memory-raphs.md`](./memory-raphs.md)
+> - Sibling Contracts: [`carbon-visual-theme.md`](./carbon-visual-theme.md) · [`theta-integration.md`](./theta-integration.md) · [`carbon-integration.md`](./carbon-integration.md) · [`memory-raphs.md`](./memory-raphs.md)
 
 ---
 
@@ -236,12 +236,12 @@ hydrogen/
 ### 5.1 L7 Vault Subsystem (`src/vault/` ↔ `memory_core_rs 1.7.0`)
 - **Live Working Container vs. Packed `.raphs` Bundle:**
   - `memory_core_rs` operates on `<dir>/gyara-maths.sqlite` + `gyara-maths.keys.json` during fast incremental SQLite transactions and packs/unpacks single-file `gyara-maths.raphs` zip bundles via `Memory::pack` / `bundle::unpack` / `Memory::export_clean_course_bundle`. Hydrogen's `VaultHandle` wraps this behind a `tokio::sync::Mutex<Memory>` (honoring `memory.raphs` Conformance Rule A6: single `Memory` connection per file per process).
-- **Embedded Product Brand Logo Blobs & Subject Palette (`course_media_assets` + `course_meta.config_json`):**
-  - When initializing or updating a product vault, Hydrogen embeds the product's brand logos from `products/<product>/assets/` into `blobs` via `memory.put_course_asset(...)` (`GYR-LOGO-WHITE` from `gyara-white.png` and `GYR-LOGO-BLUE` from `gyara-blue.png` as 100% font-independent PNG renders, alongside optional `.svg` source assets) and stores `{ "branding": { "logoWhiteAssetId": "GYR-LOGO-WHITE", "logoLightAssetId": "GYR-LOGO-BLUE", "subjectColor": "#2563EB", "importantIcon": "triangle" } }` in `course_meta.config_json`.
-  - **SIGMA** and **Hydrogen** pass `GYR-LOGO-WHITE` (`data:image/png;base64,...`) to Carbon's dark Full-Stage Gallery (`brandLogo` + `subjects[].logo`), while Hydrogen's own Light, Soft Web Console renders `GYR-LOGO-BLUE` in its top bar.
+- **Embedded Product & Subject PNG Logo Blobs + 12-Subject Mineral Palette (`course_media_assets` + `course_meta.config_json`):**
+  - When initializing or updating a product vault, Hydrogen embeds **strictly `2×` PNG** logos from `products/<product>/assets/` into `blobs` via `memory.put_course_asset(...)` (`GYR-LOGO-BLUE` from `gyara-blue.png` as the Title-Bar `brandLogo`, plus optional per-subject PNG emblems such as `<PROD>-<SUBJ>-LOGO`) and stores `{ "branding": { "primaryLogoAssetId": "GYR-LOGO-BLUE", "subjectLogoMode": "inherit" | "asset:<ID>" | "none", "theme": "warm-paper", "subjectColor": "#5B7DB1", "importantIcon": "triangle" } }` in `course_meta.config_json`.
+  - Both **SIGMA** and **Hydrogen** enforce Carbon's Light, Soft `warm-paper` theme (`config.setTheme: "warm-paper"`), pass `brandLogo` (`data:image/png;base64,...`) for the centered Title Bar, and set each `availableSubjects[i].logo` independently (`Some("data:image/png;base64,...")` for a custom subject icon, `None` to inherit `brandLogo`, or `Some("")` for a clean text-only subject card).
 - **Zero-Overhead Full-Stage & Slide-Over Projection (`CourseCatalogSnapshot` $\to$ Carbon `chrome.setCatalog`):**
   - Calls `memory.course_catalog_snapshot()` (`< 1 ms` indexed scalar read) and maps to Carbon's `chrome.setCatalog` (`displayMode: "full-stage"` or `"slide-over"`, `viewLevel: "subjects" | "subject-root" | "paper-detail" | "topic-detail"`):
-    - `course_meta.config_json.branding` + `blobs` $\to$ `brandLogo`, `importantIcon: "triangle"`, and jewel-toned `subjects[]` Hero Cards (`#2563EB` Maths, `#0D9488` English, `#7C3AED` VR, `#DB2777` NVR),
+    - `course_meta.config_json.branding` + `blobs` $\to$ `brandLogo` (`GYR-LOGO-BLUE`), `importantIcon: "triangle"`, and explicit `subjects[]` Hero Cards drawn from the **12-Subject Muted Mineral Palette** (`#5B7DB1`, `#4D8B7A`, `#7A6BA8`, `#A8647A`, `#A37E58`, `#568A9E`, `#6B8E67`, `#8F6B9E`, `#B07462`, `#5C768D`, `#8C7D53`, `#4F8A8B`—always explicitly assigned so `> 6` subjects never repeat Carbon's 6-colour fallback),
     - `papers` + `paper_sections` + `questions` (`container_kind == "paper"`, tagging `is_replica == true` with violet `AI` `tagBadges` and `filterTags`) $\to$ `chrome.setCatalog.params.papers[]`,
     - `books` $\to$ `chapters` $\to$ `topics` $\to$ `topic_cards` + `questions` $\to$ `chrome.setCatalog.params.topics[]` (`parentId` hierarchy),
     - Author QA metrics (`total questions`, `verified`, `open comments`, `replicas`, `topic breakdown`) $\to$ `chrome.setCatalog.params.stats` when previewing in Hydrogen Author Mode *(while learner `important` `△`, `reminder: "15d"`, and Deep Crimson `#6B1414` `dueReminder: true` states are merged strictly at runtime by SIGMA from `<student>.raphs`)*.
@@ -296,12 +296,12 @@ sequenceDiagram
     end
 ```
 
-### 5.6 Minimal 4-View Hydrogen Web Console — Light, Soft Card-Grid Theme (`src/server/` + `web/`)
+### 5.6 Minimal 4-View Hydrogen Web Console — Warm-Paper Editorial Theme (`src/server/` + `web/`)
 Served by `axum` on `http://127.0.0.1:7430`:
-- **Light, Soft Card-Grid Aesthetic + Vault Brand Logo:**
-  - Uses a calm, eye-friendly **light, soft theme** (`#F6F7FB` soft porcelain-slate canvas, `#FFFFFF` elevated cards with `#E2E8F0` hairline borders and subtle soft shadows—ideal alongside white PDF source crops and KaTeX working):
-  - **Header & Navigation:** Clean light top bar featuring pill breadcrumbs (`[🏠] > [11+ Maths] > [Practice Papers] > [Paper 01]`) on the left and the centered **`Gyara+` light-surface logo (`GYR-LOGO-BLUE` / `gyara-blue.png`)** served directly from the `.raphs` vault `blobs` *(while `GYR-LOGO-WHITE` is used inside jewel-toned Subject Cards and sent to Carbon's dark Full-Stage Gallery)*.
-  - **Soft Pastel Multi-State Card Grid:** Preserves the same 3-level card-grid hierarchy (`Subjects` $\to$ `Papers / Topics` $\to$ `Questions`) with soft status tints: `#FFFFFF` (ready/unreviewed), `#EFF6FF` soft sky (compiling/in-progress), `#ECFDF5` soft sage-mint (verified), `#FEF2F2` with `#FECACA` border (needs attention: open `fix` comments or gate errors), and `#EDE9FE`/`#6D28D9` soft violet `AI` replica badges.
+- **Unified Warm-Paper Light Editorial Palette + Vault PNG Logo ([`carbon-visual-theme.md`](./carbon-visual-theme.md)):**
+  - Mirrors Carbon's Warm-Paper surface & chrome tokens (`#FDFBF7` warm ivory canvas, `#F2ECE1` warm stone header with `#DBD2C2` border & `#FCF9F2` stadium pills, `#1F2421` deep charcoal ink, `#68645B` muted label ink):
+  - **Header & Navigation:** Clean warm-stone top bar featuring pill breadcrumbs (`[🏠] > [11+ Maths] > [Practice Papers] > [Paper 01]`) on the left and the centered PNG **`Gyara+` logo (`GYR-LOGO-BLUE` / `gyara-blue.png`, strictly PNG-only)** served directly from the `.raphs` vault `blobs`.
+  - **4-State Card Grid:** Preserves the exact 3-level card-grid hierarchy (`Subjects` $\to$ `Papers / Topics` $\to$ `Questions`) and soft-mineral colors (`#5B7DB1` Maths, `#4D8B7A` English, `#7A6BA8` VR, `#A8647A` NVR) with Carbon's 4-state fills: `#FFFFFF` (`#DEE4EC` border, default), `#F1F6FD` (`#BAD4F7` border, compiling/in-progress), `#F0FBF4` (`#B2E8C6` border, verified), `#FFF1F2` (`#FBABB8` border & `#881337` rose title, open `fix` comments or gate errors), and `#6D5CAE` understated `AI` replica badges.
 - **REST API (`/api/...`):**
   - `GET /api/vaults` & `POST /api/vaults/open` — switch between `gyara-maths.raphs`, `gyara-nvr.raphs`, etc.
   - `GET /api/catalog` — returns `CourseCatalogSnapshot` (Books, Chapters, Papers, Topics, Types, Question Summaries, Comment Counts).

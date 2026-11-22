@@ -1,0 +1,9 @@
+# Hydrogen Workspace Configuration (`hydrogen.toml`)
+
+products_dir = "products"
+rules_dir = "rules"
+default_product = "gyaraplus"
+default_subject = "maths"
+bind_addr = "127.0.0.1:7430"
+carbon_ws_url = "ws://127.0.0.1:7420/carbon"
+device_id = "hydrogen-dgx-spark"

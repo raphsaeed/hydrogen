@@ -38,34 +38,38 @@ Hydrogen is architected as a reusable curriculum factory across multiple educati
 | :--- | :--- | :--- |
 | **`papers`** | Raw input sources: PDF exam papers, books/chapters, topic worksheets, worked examples, tests, and image snapshots. | **Input only.** Raw files, scans, cropped snapshots, and **any name/reference to the original source paper/publisher** must **never** appear in the output `.raphs` vault. Only Hydrogen stores a private cross-reference (`private-xref.json`) for verification. |
 | **`hydrogen`** *(This Project)* | Heavy AI Solution Compiler, Replica Generator, Comment Processor & Minimal Local Web Console (`Rust + axum + HTML/TS`). | **Owns all heavy intelligence & authoring:** PDF/image extraction, visual/photo regeneration, Theta verification, `9 → 1` Carbon scene & coordinate authoring, replica creation, comment batch processing, live Carbon preview, and `.raphs` packaging. |
-| **`<product>-<subject>.raphs`** | Single-file encrypted SQLite course vault (e.g., `gyara-maths.raphs`) on `memory.raphs` **Schema `2.3.0` (`L7 Course Layer`)**. | **Hydrogen's primary output & authoring feedback store.** Indexes Books, Chapters, Papers, Sections, Topics, Question Types, Shared Stimuli, Questions, `9 → 1` Solutions, Media Blobs, and Author Comments; unlocked via **one simple Lesson Key**. **Contains zero student statistics.** |
+| **`<product>-<subject>.raphs`** | Single-file encrypted SQLite course vault (e.g., `gyara-maths.raphs`) on `memory.raphs` **Schema `2.3.0` (`L7 Course Layer`)**. | **Hydrogen's primary output & authoring feedback store.** Indexes Books, Chapters, Papers, Sections, Topics, Question Types, Shared Stimuli, Questions, `9 → 1` Solutions, Brand Logo & Media Blobs, and Author Comments; unlocked via **one simple Lesson Key**. **Contains zero student statistics.** |
 | **`theta`** (`theta_calc`) | Pure-Rust deterministic symbolic/numerical CAS, unit solver, 313-formula registry & 120 FPS Graph VM. | Linked directly into Hydrogen (`theta_calc`) at **compile time** to verify every step, fraction, root, graph landmark, and MCQ distractor; also used by SIGMA & Carbon at runtime. |
-| **`carbon`** (`carbon-shell`) | Standalone 120Hz 2-way interactive GPU whiteboard (`Carbon Protocol v0.1`, port `7420`). | Renders Left-Band Book Index (`chrome.setCatalog`), Split Question \| Working panes, 22 educational 2D macros + 3D stage, and the Multi-Comment Drawer with 1-Click **`Snap Board`** PNG attachments (`authorMode: true` in Hydrogen). |
-| **`sigma`** | Small on-device AI tutor with ASR (listen) + TTS (speak) driving lessons for the student. | **Intentionally thin consumer (out of scope to build here).** Reads `<product>-<subject>.raphs` + personal `<student>.raphs` (for learner stats), narrates/lightly adapts phrasing via TTS, dispatches Hydrogen's pre-built Carbon steps, and navigates `Level 9 ↔ Level 1` or linked Topic Cards. |
+| **`carbon`** (`carbon-shell`) | Standalone 120Hz 2-way interactive GPU whiteboard (`Carbon Protocol v0.1`, port `7420`). | Renders the Full-Stage Dark-Slate Course & Book Index Gallery (`displayMode: "full-stage"`, 3-level drill-down, centered `brandLogo`, `△` important & reminder/AI chips) + Slide-Over Left Band, Split Question \| Working panes, 22 educational 2D macros + 3D stage, and the Multi-Comment Drawer with 1-Click **`Snap Board`** PNG attachments (`authorMode: true` in Hydrogen). |
+| **`sigma`** | Small on-device AI tutor with ASR (listen) + TTS (speak) driving lessons for the student. | **Intentionally thin consumer (out of scope to build here).** Reads `<product>-<subject>.raphs` (including embedded `brandLogo` blob) + personal `<student>.raphs` (for learner stats, reminders, due status & important flags), narrates/lightly adapts phrasing via TTS, dispatches Hydrogen's pre-built Carbon steps, and navigates `Level 9 ↔ Level 1` or linked Topic Cards. |
 
 ---
 
 ## 3. Core Functional Requirements
 
-### FR-1: Product & Subject Workspace Directory Structure
-Hydrogen organizes all raw inputs, archived sources, private cross-references, and compiled `.raphs` vaults in a standardized per-product, per-subject directory layout:
+### FR-1: Product & Subject Workspace Directory Structure (Git-Tracked Assets vs. Git-Ignored Inbox)
+Hydrogen organizes product brand assets/documents, raw inputs, archived sources, private cross-references, and compiled `.raphs` vaults in a standardized per-product directory layout. **`products/` itself is tracked in Git** (so product-specific logos, images, and docs live cleanly in version control), while `inbox/`, `archive/`, `private-xref.json`, and `.raphs`/`.sqlite` binaries are Git-ignored:
 
 ```text
 hydrogen/
-├── products/
-│   ├── gyara/                                       # 11+ (Gyaraplus) Product Line
-│   │   ├── maths/
-│   │   │   ├── inbox/                               # Drop raw PDF papers / book chapters / images here
-│   │   │   ├── archive/                             # Processed raw source files moved here (NEVER in .raphs)
-│   │   │   ├── private-xref.json                    # Hydrogen-only map: GYR-MTH-P001 <-> source file, page, bbox
-│   │   │   └── gyara-maths.raphs                    # Single live course vault (SQLCipher L7)
-│   │   ├── english/
-│   │   │   └── gyara-english.raphs
-│   │   ├── verbal-reasoning/
-│   │   │   └── gyara-verbal-reasoning.raphs
-│   │   └── non-verbal-reasoning/
-│   │       └── gyara-non-verbal-reasoning.raphs
+├── products/                                        # Tracked in Git (assets, logos, product docs)
+│   ├── gyaraplus/                                   # 11+ (Gyara+) Product Line
+│   │   ├── assets/                                  # GIT-TRACKED brand logos & product visuals
+│   │   │   ├── gyara-white.png                      # Primary dark-slate & subject-card logo (font-independent)
+│   │   │   ├── gyara-blue.png                       # Light-background logo variant (font-independent)
+│   │   │   ├── gyara-white.svg                      # Vector source asset
+│   │   │   └── gyara-blue.svg                       # Vector source asset
+│   │   ├── inbox/                                   # GIT-IGNORED: Drop raw PDF papers / chapters / images here
+│   │   │   └── maths/
+│   │   ├── archive/                                 # GIT-IGNORED: Processed raw source files & crops (NEVER in .raphs)
+│   │   │   └── maths/
+│   │   ├── private-xref.json                        # GIT-IGNORED: Hydrogen-only map (GYR-MTH-P001 <-> source PDF/page/bbox)
+│   │   ├── gyara-maths.raphs                        # GIT-IGNORED: Live L7 course vault (SQLCipher)
+│   │   ├── gyara-english.raphs
+│   │   ├── gyara-verbal-reasoning.raphs
+│   │   └── gyara-non-verbal-reasoning.raphs
 │   └── gcse/                                        # Future GCSE Product Line
+│       ├── assets/
 │       ├── maths/
 │       │   └── gcse-maths.raphs
 │       └── physics/
@@ -123,15 +127,18 @@ hydrogen/
 
 ---
 
-### FR-6: Native SQLite Course Index (`memory.raphs` Schema `2.3.0` Layer `L7`) & Zero Student Stats
+### FR-6: Native SQLite Course Index (`memory.raphs` Schema `2.3.0` Layer `L7`), Brand Logo Blobs & Zero Student Stats
 1. **Native SQLite Course Index (No External Index JSON):**
    - All course hierarchy and Unique IDs live directly inside SQLite `L7` tables in `<product>-<subject>.raphs` (`memory_core_rs 1.7.0`): `course_meta`, `course_books`, `course_chapters`, `course_papers`, `course_paper_sections`, `course_topics`, `course_topic_cards`, `course_question_types`, `course_stimuli`, `course_questions`, `course_question_revisions`, `course_question_topics`, `course_concept_links`, `course_media_assets`, `course_item_assets`, plus `FTS5` & `vec0` search tables.
-   - `Memory::course_catalog_snapshot()` projects the full Left-Band tree (`< 1 ms`) to power both Carbon's Slide-Over Book Index (`chrome.setCatalog`) and Hydrogen's Web UI.
-2. **Strict Separation of Learner Statistics:**
-   - **Zero learner/classroom statistics** (`completed`, `attempts`, scores, stars, student reminders) are stored inside `<product>-<subject>.raphs`. Learner progress lives in each learner's personal `<student>.raphs` vault and is merged at runtime by SIGMA before calling `chrome.setCatalog`.
-3. **Single Simple "Lesson Key" & Clean Customer Export:**
+   - `Memory::course_catalog_snapshot()` projects the full catalog (`< 1 ms`) to power Carbon's **Full-Stage Dark-Slate Gallery** (`displayMode: "full-stage"`) & Slide-Over Index (`chrome.setCatalog`) as well as Hydrogen's Web UI.
+2. **Embedded Product Brand Logo Blobs & Subject Palette (`course_media_assets` + `course_meta`):**
+   - Hydrogen embeds the product's brand logos from `products/<product>/assets/` directly into `blobs` via `course_media_assets` (for Gyara+: `GYR-LOGO-WHITE` from `gyara-white.png` for `#151A24` dark-slate headers & jewel-toned subject cards, and `GYR-LOGO-BLUE` from `gyara-blue.png` for light surfaces) and records `{ "branding": { "logoWhiteAssetId": "GYR-LOGO-WHITE", "logoLightAssetId": "GYR-LOGO-BLUE", "subjectColor": "#2563EB", "importantIcon": "triangle" } }` inside `course_meta.config_json`.
+   - At runtime, SIGMA (and Hydrogen in Author Preview) reads the logo blob from `<product>-<subject>.raphs` and passes it as `brandLogo` / subject `logo` (`data:image/png;base64,...`) in `chrome.setCatalog`, paired with each subject vault's jewel accent (`#2563EB` Maths, `#0D9488` English, `#7C3AED` Verbal Reasoning, `#DB2777` Non-Verbal Reasoning) and `"AI"` violet `tagBadges` on `is_replica = true` papers/questions.
+3. **Strict Separation of Learner Statistics:**
+   - **Zero learner/classroom statistics** (`completed`, `in-progress`, `attempts`, scores, `important` `△` flags, `reminder: "15d"`, or crimson `dueReminder: true` states) are stored inside `<product>-<subject>.raphs`. Learner progress and spaced-repetition reminders live in each learner's personal `<student>.raphs` vault and are merged at runtime by SIGMA before calling `chrome.setCatalog`.
+4. **Single Simple "Lesson Key" & Clean Customer Export:**
    - Course vaults unlock via **one simple Lesson Key** (`Memory::open_with_passphrase`).
-   - Publishing a commercial copy calls `Memory::export_clean_course_bundle(out_path, lesson_key)`, which strips `course_comments`, `course_comment_attachments`, `course_question_revisions`, unreferenced comment blobs, and authoring `provenance` rows under a fresh Lesson Key.
+   - Publishing a commercial copy calls `Memory::export_clean_course_bundle(out_path, lesson_key)`, which preserves `course_media_assets` (keeping the brand logos intact!) while stripping `course_comments`, `course_comment_attachments`, `course_question_revisions`, unreferenced comment blobs, and authoring `provenance` rows under a fresh Lesson Key.
 
 ---
 
@@ -157,10 +164,10 @@ hydrogen/
 
 ---
 
-### FR-10: Minimal "Hydrogen Console" Local Web UI (`Rust axum + HTML/TS`)
-Hydrogen serves a fast, clean 4-view local web interface (`http://127.0.0.1:7430`):
-1. **View 1 — Vault Explorer & Coverage Dashboard:** Open `gyara-maths.raphs` (or switch vaults); browse & filter Books, Chapters, Papers, Topics, Question Types, Difficulty (`1–5`), Format (`MCQ`/`Written`), and QA/Comment status.
-2. **View 2 — Question, `9 → 1` Level & Side-by-Side Source Inspector:** View stem, MCQ choices, and all `Steps × Sub-Levels 9..1` alongside the private original PDF crop (`private-xref.json`); trigger *Create Replicas*, *Modify/Regenerate*, *Link Topic*, and ***"Live Preview on Carbon"*** (`ws://127.0.0.1:7420/carbon` with `authorMode: true`, Left-Band Book Index sync, and live level-stepping).
+### FR-10: Minimal "Hydrogen Console" Local Web UI — Sleek Dark-Slate Grid Aesthetic (`Rust axum + HTML/TS`)
+Hydrogen serves a fast, clean 4-view local web interface (`http://127.0.0.1:7430`) sharing the **exact dark-slate (`#151A24`) card-grid design language** as Carbon's Full-Stage Course Gallery (centered product `brandLogo` header bar, pill breadcrumbs `[🏠] > [Subject] > [Paper]`, pill filter bar, jewel-toned Subject/Vault Hero Cards, and crisp multi-state Paper & Question cards with violet `AI` replica badges and QA/comment status indicators):
+1. **View 1 — Vault Explorer & Dark-Slate Card Grid:** Open `gyara-maths.raphs` (or switch across jewel-toned subject vaults); drill down from Subject Vault Hero Cards $\to$ 3–4 column Papers/Chapters/Topics grid $\to$ 4–6 column Question/Card grid, filtering by Real Papers, `AI` Replicas, Topic, Difficulty (`1–5`), Format (`MCQ`/`Written`), and Open Comments.
+2. **View 2 — Question, `9 → 1` Level & Side-by-Side Source Inspector:** View stem, MCQ choices, and all `Steps × Sub-Levels 9..1` alongside the private original PDF crop (`private-xref.json`); trigger *Create Replicas*, *Modify/Regenerate*, *Link Topic*, and ***"Live Preview on Carbon"*** (`ws://127.0.0.1:7420/carbon` with `authorMode: true`, Full-Stage / Slide-Over Catalog sync, and live level-stepping).
 3. **View 3 — Comments & Screenshots Inbox:** Inspect `course_comments` + `Snap Board` thumbnails, trigger single/batch Hydrogen fixes, and view `course_question_revisions` diffs.
 4. **View 4 — Ingestion, Live Batch Progress & Clean Customer Export:** Drop PDFs/images, watch live per-question compilation progress over WebSocket, and run 1-click `export_clean_course_bundle`.
 
@@ -180,13 +187,13 @@ Hydrogen serves a fast, clean 4-view local web interface (`http://127.0.0.1:7430
 
 | # | Area | Locked Decision |
 | :---: | :--- | :--- |
-| **1** | **Products & Vaults** | `products/gyara/{maths,english,verbal-reasoning,non-verbal-reasoning}` (`gyara-maths.raphs` first), then GCSE Maths/Physics & Infant–A-Level. |
+| **1** | **Products & Brand Assets** | `products/` is **tracked in Git** (storing brand logos & product docs like `products/gyaraplus/assets/gyara-{white,blue}.{png,svg}`, embedded as `blobs` in `.raphs`), while `inbox/`, `archive/`, `private-xref.json`, and `.raphs` vaults are Git-ignored. |
 | **2** | **9-Level Scale** | **Question-relative (`9 → 1`):** `L9` = expected exam working; `L8..L1` = progressive visual/infant scaffolding; invisible to learner; err toward **more** levels. |
-| **3** | **Hydrogen vs. SIGMA** | **Heavy Hydrogen + Theta, Thin SIGMA:** Hydrogen pre-compiles all math, 2D/3D Carbon coordinates/macros, and narration scripts; SIGMA only narrates, listens, and navigates. |
+| **3** | **Hydrogen vs. SIGMA** | **Heavy Hydrogen + Theta, Thin SIGMA:** Hydrogen pre-compiles all math, 2D/3D Carbon coordinates/macros, brand logos, and narration scripts; SIGMA only narrates, listens, merges `<student>.raphs` stats/reminders, and navigates. |
 | **4** | **Source Privacy** | Zero source PDFs/crops and zero external paper names in `.raphs`; visuals/photos cleanly regenerated; private cross-ref in `private-xref.json` only. |
 | **5** | **Question Format** | Default **5-option MCQ (`A–E`)** for Gyara 11+ (Theta-verified trap distractors) + `written` / `interactive` / `drawing` supported. |
-| **6** | **Database Schema** | Native SQLite **Layer `L7` (`course_*` tables)** in `memory.raphs` **Schema `2.3.0` (`memory_core_rs 1.7.0`)**—indexing Books, Chapters, Papers, Sections, Topics, Types, Stimuli, Questions, Media Blobs & Comments. |
-| **7** | **Learner Statistics** | **Strictly excluded from course `.raphs` vaults**; stored in `<student>.raphs` and merged by SIGMA at runtime for Carbon's Left Band (`chrome.setCatalog`). |
-| **8** | **Lesson Key & Export** | Single simple Lesson Key (`open_with_passphrase`); customer release uses `export_clean_course_bundle` stripping comments & history. |
-| **9** | **Carbon Integration** | Uses updated Carbon spec: Slide-Over Left Band (`chrome.setCatalog`), `authorMode: true` in Hydrogen, and Multi-Comment Drawer with 1-Click `Snap Board` PNGs (`comment.saved`). |
-| **10** | **Stack & AI Modes** | **Rust (`axum` + CLI) + Minimal HTML/TS UI**, supporting **both** interactive Antigravity authoring and native Rust Gemini 4 API batching. |
+| **6** | **Database Schema** | Native SQLite **Layer `L7` (`course_*` tables)** in `memory.raphs` **Schema `2.3.0` (`memory_core_rs 1.7.0`)**—indexing Books, Chapters, Papers, Sections, Topics, Types, Stimuli, Questions, Brand/Media Blobs & Comments. |
+| **7** | **Learner Statistics** | **Strictly excluded from course `.raphs` vaults**; stored in `<student>.raphs` (`important` `△`, `15d` reminders, crimson `dueReminder` states, mastery) and merged by SIGMA at runtime for Carbon's Gallery (`chrome.setCatalog`). |
+| **8** | **Lesson Key & Export** | Single simple Lesson Key (`open_with_passphrase`); customer release uses `export_clean_course_bundle` stripping comments & history while preserving brand/media blobs. |
+| **9** | **Carbon & UI Aesthetic** | Carbon implements Full-Stage Dark-Slate (`#151A24`) Gallery (`displayMode: "full-stage"`, 3-level drill-down, `brandLogo`, `△` triangle, `AI` badge, 4-state cards) + `Snap Board` comments; Hydrogen's Web Console adopts the **same `#151A24` dark-slate card-grid aesthetic**. |
+| **10** | **Stack & AI Modes** | **Rust (`axum` + CLI) + Minimal Dark-Slate HTML/TS UI**, supporting **both** interactive Antigravity authoring and native Rust Gemini 4 API batching. |

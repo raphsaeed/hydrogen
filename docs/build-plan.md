@@ -58,16 +58,18 @@
    - *(Port allocation: Carbon Shell `:7420`, Carbon Studio `:7421`, Hydrogen Console `:7430` — zero port collisions.)*
 
 ### Phase 1 Sub-Steps
-- [ ] **1.1 Product & Subject Directory Scaffolding:**
-  - Standardize `products/gyaraplus/` (with `inbox/{maths,english,verbal-reasoning,non-verbal-reasoning}`, `archive/{maths,...}`, and `gyara-{maths,english,verbal-reasoning,non-verbal-reasoning}.raphs`) and `products/gcse/{maths,physics}`.
-  - Verify `.gitignore` protects all raw source papers (`products/**/inbox/`, `products/**/archive/`, `private-xref.json`), `.env` secrets, `.keys.json`, and SQLite/vault binaries.
+- [x] **1.0 Pedagogical & Visual Rules Hierarchy (`rules/`):**
+  - Created 4-tier strictly product-isolated rules tree (`rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/{common,levels}.md`) covering `gyaraplus` (`maths` Algebra-First, `english`, `verbal-reasoning`, `non-verbal-reasoning`), `gcse` (`maths` Foundation/Higher + `physics`), `alevel` (`maths` + `physics`), `primary`, and `infant`.
+- [ ] **1.1 Product & Subject Directory Scaffolding & Brand Assets:**
+  - [x] Place Git-tracked `Gyara+` brand logos in `products/gyaraplus/assets/` (`gyara-white.png`, `gyara-blue.png`, `gyara-white.svg`, `gyara-blue.svg`) and ensure `.gitignore` keeps `products/` tracked while ignoring `products/**/inbox/`, `products/**/archive/`, `products/**/private-xref.json`, `.env`, `.keys.json`, and SQLite/`.raphs` binaries.
+  - [ ] Standardize remaining `products/gyaraplus/` (`inbox/{maths,english,verbal-reasoning,non-verbal-reasoning}`, `archive/{maths,...}`) and `products/gcse/{assets,maths,physics}` directories.
 - [ ] **1.2 Rust Project & Configuration Setup (`Cargo.toml` & `src/config.rs`):**
   - Initialize the `hydrogen` Rust crate (Edition 2024: `tokio`, `axum`, `serde`, `serde_json`, `clap`, `tokio-tungstenite`, `reqwest`, `tracing`).
   - Wire dependencies to **`theta_calc`** (`path = "/home/raphspark/projects/theta/crates/calc-api"`), **`memory_core_rs`** (`git = "ssh://git@github.com/raphs-app/raphs.git", tag = "memory-core-1.7.0"`), and **`carbon-protocol`** (`git = "ssh://git@github.com/raphsaeed/carbon.git", branch = "main"`).
   - Implement configuration loader (`hydrogen.toml` + environment variables for `GEMINI_API_KEY`, default Lesson Key, Carbon WebSocket URL `ws://127.0.0.1:7420/carbon`, and `axum` port `7430`).
-- [ ] **1.3 `L7` Vault Wrapper (`src/vault/`):**
+- [ ] **1.3 `L7` Vault Wrapper & Brand Logo Blob Seeding (`src/vault/`):**
   - Implement thread-safe `VaultManager` (`tokio::sync::Mutex<Memory>`) handling live `<name>.sqlite` + `<name>.keys.json` containers and `.raphs` bundle `pack` / `unpack`.
-  - Initialize `gyara-maths.raphs` with `CourseMetaInput` (`course_id: "GYR-MTH"`, `default_answer_format: "mcq"`, `theta_preset: "uk_gcse"`) and seed baseline 11+ Maths `course_topics` (*Number*, *Fractions/Decimals/Percentages*, *Ratio & Proportion*, *Algebra*, *Measurement*, *2D & 3D Geometry*, *Statistics & Probability*) and initial `course_question_types`.
+  - Initialize `gyara-maths.raphs` with `CourseMetaInput` (`course_id: "GYR-MTH"`, `default_answer_format: "mcq"`, `theta_preset: "uk_gcse"`), embed `products/gyaraplus/assets/gyara-white.png` (`GYR-LOGO-WHITE`) and `gyara-blue.png` (`GYR-LOGO-BLUE`) into `course_media_assets` (`blobs`) + `course_meta.config_json.branding` (`subjectColor: "#2563EB"`, `importantIcon: "triangle"`), and seed baseline 11+ Maths `course_topics` (*Number*, *Fractions/Decimals/Percentages*, *Ratio & Proportion*, *Algebra*, *Measurement*, *2D & 3D Geometry*, *Statistics & Probability*) and initial `course_question_types`.
 - [ ] **1.4 In-Process `Theta` Integration (`src/theta/`):**
   - Implement `ThetaService` wrapping `theta_calc` (`calc_eval`, `calc_solve`, `calc_formula`, `calc_transform`, `calc_stats`, `calc_analyze_graph`) with stage presets (`allow_mixed_fractions: true`, `angle_mode: "deg"`, `anchor_tokens: true` for 11+ Maths).
   - Add smoke tests verifying exact rational arithmetic, mixed fractions, and `\htmlId` KaTeX generation.
@@ -81,7 +83,8 @@
 ## Phase 2: Domain Blueprints, Quality Gates, PDF Slicer & CLI *(Antigravity Path)*
 *Goal: Lock the strongly-typed `question_json` and `solution_json` schemas, build the deterministic verification gates, build the private PDF/image slicer, and expose `hydrogen` CLI commands so Antigravity can process test questions/papers right away.*
 
-- [ ] **2.1 Universal ID & Blueprint Types (`src/domain/`):**
+- [ ] **2.1 Universal ID, RuleLoader & Blueprint Types (`src/rules/` & `src/domain/`):**
+  - Implement 4-tier `RuleLoader` (`src/rules/`) parsing YAML frontmatter (`theta` preset, `defaults`, `level_9_policy`) and concatenating `rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/{common,levels}.md` (+ optional tier overlay) with strict product isolation.
   - Implement `UniversalId` parser/builder (`GYR-MTH-P001-Q014`, replicas `-R01`, chapters `B01-CH03`, cards `-C01`, sub-addressing `:a:S01:L09`).
   - Implement `QuestionBlueprint` (`question_json`) and `SolutionBlueprint` (`solution_json`: multi-part state, `Steps × Sub-Levels 9..1`, Carbon commands, Theta checks, MCQ trap diagnostics, and SIGMA narration scripts) matching [`solution-levels.md`](./solution-levels.md) §6.
 - [ ] **2.2 Deterministic Quality Gate (`src/compiler/gate.rs`):**
@@ -128,13 +131,15 @@
   - REST endpoints for vault selection, `CourseCatalogSnapshot`, question/level inspection, private source-crop serving (`private-xref.json`), job triggers (ingest, regenerate, comment fix, replica), and live WebSocket progress/event push.
 - [ ] **4.2 Bidirectional Live Carbon Author Bridge (`web/` Localhost WS + `src/carbon/bridge.rs` LAN WS):**
   - Support connecting to the Mac's running `carbon-shell` either directly from the Mac browser (`ws://127.0.0.1:7420/carbon`) or from Hydrogen's Rust backend over LAN (`ws://<mac-ip>:7420/carbon`).
-  - Push `chrome.update` (`authorMode: true`) + `chrome.setCatalog` (Left-Band Book Index built from `CourseCatalogSnapshot`) to Carbon.
+  - Push `chrome.update` (`authorMode: true`) + `chrome.setCatalog` (`displayMode: "full-stage"` & `"slide-over"`, `brandLogo` `data:image/png;base64,...` from `GYR-LOGO-WHITE`, `importantIcon: "triangle"`, `AI` replica `tagBadges`, and 3-level drill-down built from `CourseCatalogSnapshot`) to Carbon.
   - Handle live Carbon events:
     - `catalog.itemSelected` $\to$ load clicked Question or Topic Card onto Carbon,
     - `comment.saved` $\to$ persist comment + `Snap Board` PNG blob straight into `gyara-maths.raphs` (`upsert_course_comment`) and notify the Web UI live,
-    - `comment.deleted` $\to$ remove comment in `gyara-maths.raphs`.
-- [ ] **4.3 Minimal 4-View HTML/TypeScript Frontend (`web/`):**
-  - **View 1 — Vault Browser & Coverage Dashboard:** Filter/group by Paper, Book/Chapter, Topic (*Algebra*, *Geometry*, ...), Question Type, Difficulty (`1–5`), `MCQ`/`Written`, and QA/Comment badges.
+    - `comment.deleted` $\to$ remove comment in `gyara-maths.raphs`,
+    - `catalog.actionRequested` (`"create-replica"`) $\to$ queue replica job in Hydrogen.
+- [ ] **4.3 Minimal 4-View Dark-Slate Card-Grid HTML/TypeScript Frontend (`web/`):**
+  - Implement the shared **dark-slate (`#151A24`) card-grid aesthetic** matching Carbon's Full-Stage Course Gallery (centered `Gyara+` `brandLogo` header, `[🏠] > [Subject] > [Paper]` pill breadcrumbs, `#FACC15` active filter pills, jewel-toned Subject Vault Hero Cards, and multi-state Paper/Question cards with `#8B5CF6` `AI` badges and `#6B1414` Deep Crimson open-comment/attention highlights):
+  - **View 1 — Vault Browser & Dark-Slate Card Grid:** Drill down Subject Vaults $\to$ 3–4 col Papers/Chapters/Topics grid $\to$ 4–6 col Question cards; filter by Real Papers, `AI` Practice, Topic, Question Type, Difficulty (`1–5`), `MCQ`/`Written`, and Open Comments.
   - **View 2 — Question, `9 → 1` & Source Crop Inspector:** Side-by-side private PDF crop vs. compiled question; interactive Step & Sub-Level (`9..1`) selector with 1-click **"Send / Step Live on Carbon"**, **"Regenerate with Prompt"**, and **"Create Replica"** buttons.
   - **View 3 — Comments & Screenshots Inbox:** View open/resolved Carbon comments + `Snap Board` screenshots, edit notes, trigger fixes, and inspect `course_question_revisions` diffs.
   - **View 4 — Ingest, Live Job Queue & Export:** Upload/select inbox paper, watch live per-question progress bars, and trigger `export_clean_course_bundle`.

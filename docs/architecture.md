@@ -98,22 +98,28 @@ hydrogen/
 │   ├── theta-integration.md
 │   ├── carbon-integration.md
 │   └── memory-raphs.md
-├── products/                               # Multi-product, multi-subject data root
-│   ├── gyara/
-│   │   ├── maths/
-│   │   │   ├── inbox/                      # Drop raw PDFs / images here
-│   │   │   ├── archive/                    # Processed raw sources + page/question crops
-│   │   │   ├── private-xref.json           # Private ID <-> source PDF/page/bbox map
-│   │   │   └── gyara-maths.raphs           # Live L7 course vault (.sqlite/.keys.json or .raphs)
-│   │   ├── english/
-│   │   ├── verbal-reasoning/
-│   │   └── non-verbal-reasoning/
+├── rules/                                  # Strictly product-isolated 4-tier pedagogical & visual rules
+│   ├── common.md                           # Tier 1: Global clarity, simplicity, elegance & Carbon/KaTeX hygiene
+│   ├── gyaraplus/                          # Tier 2..4: 11+ (common.md + {maths,english,vr,nvr}/{common,levels}.md)
+│   ├── gcse/                               # Tier 2..4: GCSE (common.md + {maths,physics}/{common,levels,tier}.md)
+│   ├── alevel/                             # Tier 2..4: A-Level (common.md + {maths,physics}/{common,levels}.md)
+│   ├── primary/                            # Tier 2..4: Primary KS2
+│   └── infant/                             # Tier 2..4: Infant EYFS/KS1
+├── products/                               # Multi-product root (TRACKED in Git for assets/logos/docs)
+│   ├── gyaraplus/
+│   │   ├── assets/                         # GIT-TRACKED brand logos: gyara-{white,blue}.{png,svg}
+│   │   ├── inbox/maths/                    # GIT-IGNORED: Drop raw PDFs / images here
+│   │   ├── archive/maths/                  # GIT-IGNORED: Processed raw sources + page/question crops
+│   │   ├── private-xref.json               # GIT-IGNORED: Private ID <-> source PDF/page/bbox map
+│   │   └── gyara-maths.raphs               # GIT-IGNORED: Live L7 course vault (.sqlite/.keys.json or .raphs)
 │   └── gcse/
+│       ├── assets/
 │       ├── maths/
 │       └── physics/
 ├── src/
 │   ├── main.rs                             # Unified `hydrogen` binary (CLI subcommands + `serve`)
 │   ├── config.rs                           # Env/TOML config (products root, Lesson Keys, Carbon URL, Gemini API)
+│   ├── rules/                              # 4-tier RuleLoader (YAML frontmatter + isolated product/subject/level markdown)
 │   ├── domain/                             # Strongly-typed QuestionBlueprint, SolutionBlueprint (L9..L1), UniversalId
 │   ├── vault/                              # `memory_core_rs 1.7.0` L7 wrapper, catalog projector & clean exporter
 │   ├── theta/                              # In-process `theta_calc` wrapper, 11+/GCSE presets & math/MCQ verifier
@@ -131,11 +137,15 @@ hydrogen/
 ### 4.1 L7 Vault Subsystem (`src/vault/` ↔ `memory_core_rs 1.7.0`)
 - **Live Working Container vs. Packed `.raphs` Bundle:**
   - While `memory_core_rs` operates on `<dir>/gyara-maths.sqlite` + `gyara-maths.keys.json` during fast incremental SQLite transactions and packs/unpacks single-file `gyara-maths.raphs` zip bundles via `Memory::pack` / `bundle::unpack` / `Memory::export_clean_course_bundle`, Hydrogen's `VaultHandle` manages this transparently behind a `tokio::sync::Mutex<Memory>` (honoring `memory.raphs` Conformance Rule A6: single `Memory` connection per file per process).
-- **Zero-Overhead Left-Band Projection (`CourseCatalogSnapshot` $\to$ Carbon `chrome.setCatalog`):**
-  - Calls `memory.course_catalog_snapshot()` (`< 1 ms` indexed scalar read) and maps:
-    - `papers` + `paper_sections` + `questions` (`container_kind == "paper"`) $\to$ `chrome.setCatalog.params.papers[]`,
+- **Embedded Product Brand Logo Blobs & Subject Palette (`course_media_assets` + `course_meta.config_json`):**
+  - When initializing or updating a product vault, Hydrogen embeds the product's brand logos from `products/<product>/assets/` into `blobs` via `memory.put_course_asset(...)` (`GYR-LOGO-WHITE` from `gyara-white.png` and `GYR-LOGO-BLUE` from `gyara-blue.png` as the primary 100% font-independent renders, alongside optional `.svg` source assets) and stores `{ "branding": { "logoWhiteAssetId": "GYR-LOGO-WHITE", "logoLightAssetId": "GYR-LOGO-BLUE", "subjectColor": "#2563EB", "importantIcon": "triangle" } }` in `course_meta.config_json`.
+  - Both **SIGMA** (in student sessions) and **Hydrogen** (in Author Preview) read `GYR-LOGO-WHITE` out of `blobs` and pass it as a `data:image/png;base64,...` URI in `chrome.setCatalog.params.brandLogo` and `subjects[].logo`.
+- **Zero-Overhead Full-Stage & Slide-Over Projection (`CourseCatalogSnapshot` $\to$ Carbon `chrome.setCatalog`):**
+  - Calls `memory.course_catalog_snapshot()` (`< 1 ms` indexed scalar read) and maps to Carbon's `chrome.setCatalog` (`displayMode: "full-stage"` or `"slide-over"`, `viewLevel: "subjects" | "subject-root" | "paper-detail" | "topic-detail"`):
+    - `course_meta.config_json.branding` + `blobs` $\to$ `brandLogo`, `importantIcon: "triangle"`, and jewel-toned `subjects[]` Hero Cards (`#2563EB` Maths, `#0D9488` English, `#7C3AED` VR, `#DB2777` NVR),
+    - `papers` + `paper_sections` + `questions` (`container_kind == "paper"`, tagging `is_replica == true` with violet `AI` `tagBadges` and `filterTags`) $\to$ `chrome.setCatalog.params.papers[]`,
     - `books` $\to$ `chapters` $\to$ `topics` $\to$ `topic_cards` + `questions` $\to$ `chrome.setCatalog.params.topics[]` (`parentId` hierarchy),
-    - Author QA metrics (`total questions`, `verified`, `open comments`, `replicas`, `topic breakdown`) $\to$ `chrome.setCatalog.params.stats` when previewing in Hydrogen Author Mode!
+    - Author QA metrics (`total questions`, `verified`, `open comments`, `replicas`, `topic breakdown`) $\to$ `chrome.setCatalog.params.stats` when previewing in Hydrogen Author Mode *(while learner `important` `△`, `reminder: "15d"`, and Deep Crimson `#6B1414` `dueReminder: true` states are merged strictly at runtime by SIGMA from `<student>.raphs`)*.
 
 ### 4.2 Deterministic Math & Distractor Engine (`src/theta/` ↔ `theta_calc`)
 - Calls `theta_calc` directly in Rust (`< 50 µs` per call):
@@ -155,7 +165,12 @@ hydrogen/
      - `comment.deleted` $\to$ calls `memory.delete_course_comment(...)`.
      - `catalog.actionRequested` (`"create-replica"`) $\to$ queues a replica job in Hydrogen!
 
-### 4.4 Agentic Compilation Pipeline (`src/compiler/`)
+### 4.4 4-Tier Isolated Rule Loader (`src/rules/` ↔ `rules/`)
+- Resolves strictly within the target product directory so GCSE, A-Level, 11+, Primary, and Infant rules never bleed across products:
+  `rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/common.md` $\to$ `rules/<product>/<subject>/levels.md` *(+ optional tier/class file such as `foundation.md` / `higher.md`)*.
+- Parses the YAML frontmatter on `<subject>/common.md` to configure `theta_calc` (`preset`, `angle_mode`, `allow_mixed_fractions`), default `answer_format` (`mcq` vs `written`), and `level_9_policy` (`allowed` / `forbidden` methods), while assembling the exact concatenated rulebook for the AI compiler—dynamically reloadable from disk without recompiling Rust.
+
+### 4.5 Agentic Compilation Pipeline (`src/compiler/`)
 Supports **both** execution paths over the exact same JSON contracts and quality gates:
 
 ```mermaid
@@ -181,8 +196,10 @@ sequenceDiagram
     end
 ```
 
-### 4.5 Minimal 4-View Hydrogen Web Console (`src/server/` + `web/`)
+### 4.6 Minimal 4-View Hydrogen Web Console — Dark-Slate Card-Grid Design (`src/server/` + `web/`)
 Served by `axum` on `http://127.0.0.1:7430`:
+- **Unified Dark-Slate (`#151A24`) Visual Aesthetic:**
+  - Mirrors Carbon's `displayMode: "full-stage"` gallery: deep `#151A24` slate canvas, top bar with pill breadcrumbs (`[🏠] > [11+ Maths] > [Practice Papers] > [Paper 01]`) on the left and centered product `brandLogo` (`gyara-white.png`) in the middle, gold active filter pills (`#FACC15`), jewel-toned Subject Vault Hero Cards, and crisp high-contrast Paper/Question cards (`#FFFFFF` unreviewed/ready, `#CBD5E1` in-progress/compiling, `#DCFCE7` verified, `#6B1414` Deep Crimson when open `fix` comments or gate errors require attention, plus `#8B5CF6` violet `AI` replica badges).
 - **REST API (`/api/...`):**
   - `GET /api/vaults` & `POST /api/vaults/open` — switch between `gyara-maths.raphs`, `gyara-nvr.raphs`, etc.
   - `GET /api/catalog` — returns `CourseCatalogSnapshot` (Books, Chapters, Papers, Topics, Types, Question Summaries, Comment Counts).

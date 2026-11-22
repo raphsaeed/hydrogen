@@ -14,6 +14,8 @@
 *.raphs
 
 # Raw source exam papers, crops & private source cross-references (NEVER commit)
+# NOTE: `products/` itself IS tracked in Git so product-specific logos, images,
+# and docs (e.g., `products/gyaraplus/assets/`) are version-controlled.
 products/**/inbox/
 products/**/archive/
 products/**/private-xref.json

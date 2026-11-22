@@ -261,7 +261,7 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
 
 ---
 
-### 5.2 Header Chrome, Timers, Rich Comments & Left-Band Book Index (`chrome.*`)
+### 5.2 Header Chrome, Timers, Rich Comments & Full-Page Course Book Index (`chrome.*`)
 
 1. **`chrome.update`** *(also accepts alias **`"chrome.setHeader"`**)* — Partial patch (`null`/omitted fields stay unchanged):
    ```json
@@ -269,20 +269,21 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
      "op": "chrome.update",
      "params": {
        "mode": "full",
-       "title": "GCSE Maths · 3D Mensuration",
-       "activeItemId": "GYR-MTH-P001-Q014",
-       "paperBadge": "CALC",
-       "itemLabel": "Q14",
+       "title": "11+ Maths · Practice Paper 08-ai",
+       "activeItemId": "GYR-MTH-P008AI-Q04",
+       "paperBadge": "PP 08-ai",
+       "itemLabel": "Q4",
        "partTabs": [
          { "id": "a", "label": "(a)" },
          { "id": "b", "label": "(b)" }
        ],
        "activePartId": "a",
-       "marksChip": "4 marks",
-       "calculatorMode": "allowed",
+       "marksChip": "3 marks",
+       "calculatorMode": "non-calculator",
        "status": "in-progress",
        "important": true,
-       "reminder": "3d",
+       "importantIcon": "triangle",
+       "reminder": "15d",
        "dictionaryEnabled": true,
        "catalogButtonVisible": true,
        "authorMode": false,
@@ -301,11 +302,14 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
      - `"default"` *(Not Attempted — also accepts alias `"not-attempted"` / `"not-started"`)*
      - `"in-progress"` *(In Progress)*
      - `"completed"` *(Completed — also accepts alias `"solved"`)*
+   - **`importantIcon` (`ImportantIconStyle`, default `"triangle"`):**
+     - `"triangle"` *(default — crisp coral-red `△` marker on both Carbon's Header bar and all Index cards)*
+     - `"star"` | `"flag"` *(optional `SIGMA` override)*
    - **`reminder` (`ReminderInterval`):** `"0d"` *(Off — also accepts alias `"none"`)* | `"1d"` | `"3d"` | `"5d"` | `"7d"` | `"15d"`
    - **`calculatorMode`:** `"allowed"` | `"non-calculator"`
    - **`authorMode` (`bool`, default `false`):**
-     - **`false` (Public / Student Mode):** End users only see a clean Feedback box (plain text + **1-Click `"Snap Board"`** + **Image/PDF upload or paste**). Zero internal authoring categories, open/resolved triage filters, or replica menus are visible.
-     - **`true` (Authorised Owner / Admin Session):** Unlocks author comment `kind` pills (`"fix"`, `"replica"`, `"topic"`, `"note"`, `"engine"`), `All | Pending | Done` filter, Resolve/Reopen toggle, automatic `activeStepId` / `authorMeta` stamping, and Left-Band card author actions (`catalog.actionRequested`).
+     - **`false` (Public / Student Mode):** End users only see a clean Feedback box (plain text + **1-Click `"Snap Board"`** + **Image/PDF upload or paste**) and standard learner `⋮` card options (`Not Attempted` / `In Progress` / `Completed`, `△ Important`, `0d..15d` Reminder). Zero internal authoring categories, open/resolved triage filters, or replica actions are visible or accepted.
+     - **`true` (Authorised Owner / Admin Session):** Unlocks author comment `kind` pills (`"fix"`, `"replica"`, `"topic"`, `"note"`, `"engine"`), `All | Pending | Done` filter, Resolve/Reopen toggle, automatic `activeStepId` / `authorMeta` stamping, and card `⋮` author actions (`"create-replica"`, emitting `catalog.actionRequested`).
 
 2. **`chrome.timer`** — Controls the **Session** or **Item** Dual Smart Timer:
    ```json
@@ -378,58 +382,104 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
      - **`chrome.deleteComment`**: `{ "commentId": "cmt-019968b0-4a12", "itemId": "GYR-MTH-P001-Q014", "partId": "a" }`.
    - **Emitted Events:** `"comment.saved"` (`{ "entry": FeedbackEntry }` including full `dataBase64` / `dataRef` attachments so `Hydrogen` / `SIGMA` can persist blobs immediately) and `"comment.deleted"` (`{ "commentId", "itemId", "partId" }`).
 
-5. **Collapsible Slide-Over "Left Band" Book Index & Stats (`chrome.setCatalog`, `chrome.patchCatalogItem`, `chrome.setCatalogOpen`):**
-   - Renders a sleek **Slide-Over Book Index Drawer** (`displayMode: "overlay"` default so active 2D/3D whiteboard content never shrinks or reflows, with optional `"docked"` pinning on wide displays).
-   - **Multi-Subject Model (One Subject Loaded at a Time):** The host app mounts **one active subject `.raphs` file** at a time (e.g. `gyara-maths.raphs`), passes the list of `availableSubjects` (e.g. `Maths`, `English`, `Verbal Reasoning`, `Non-Verbal Reasoning`, each with its own accent colour) plus **that active subject's** `papers`, `topics` (`Chapters → Topics`), `cards`, and `stats`. Clicking another subject pill emits `catalog.itemSelected` (`kind: "subject"`) so the host can swap `.raphs` files and push the newly selected subject's index.
-   - **Curriculum-Agnostic Stats (`stats`):** The host (`SIGMA` / `Hydrogen`) computes all learner/mastery statistics from `student.raphs` (using Carbon's `status.changed`, `important.toggled`, `reminder.changed`, and `timer.*` events) and pushes ready-to-render `metrics` cards and `breakdowns` progress bars—keeping Carbon 100% free of curriculum/level hardcoding.
+5. **Full-Page Course & Book Index Gallery (`chrome.setCatalog`, `chrome.patchCatalogItem`, `chrome.setCatalogOpen`):**
+   - **100% Full-Stage Landing & Navigation Overlay (`displayMode: "full-stage"` default):**
+     - Covers **100% of the Carbon window** across both panes on a crisp dark-slate gallery backdrop (`#151A24`), giving generous multi-column breathing room for **Hero Subject Cards**, a **3–4 column Practice Papers / Chapters & Topics Grid**, and a **4–6 column Question & Concept Cards Grid**.
+     - **Direct Blank / Scratchpad Board Access:** If `SIGMA` boots Carbon without calling `chrome.setCatalog` (or passes `"open": false`), Carbon starts directly on the clean whiteboard. Whenever the Full-Page Index *is* open, a persistent top-right **`Open Whiteboard` / `Return to Board ✕`** button lets the user dismiss the Index onto an empty or active whiteboard without selecting a subject or question.
+   - **3-Level Breadcrumb Flow + `SIGMA` Logos (`brandLogo` & per-Subject `logo`):**
+     - **Top Bar:** `[🏠]` `>` `[Subject Pill]` `>` `[Practice Papers | Chapters & Topics | Stats]` `>` `[Active Paper / Chapter]` on the left, **`SIGMA` `brandLogo`** (inline `<svg>`, `data:image/...`, or `local://` PNG rasterized offline onto GPU textures) centered, and **`[Open Whiteboard ✕]`** on the right.
+     - **Level 1 (`"subjects"`):** Renders `1..N` dynamic hero cards from `SIGMA`'s `availableSubjects` (never a fixed count—auto-centers `1–4` cards or wraps into a scrollable grid for `5+` subjects), each showing its custom jewel-toned fill, `logo` (or `brandLogo`), title, and optional paper/due summary. Clicking a Subject emits `catalog.itemSelected` (`kind: "subject"`).
+     - **Level 2 (`"subject-root"`):** Full-width multi-column grid of `SIGMA`'s `papers` (`Practice Paper 01`..`N`), `topics` (`Chapters → Topics`), or `stats`, with dynamic `SIGMA` `filterTags` (e.g. `All`, `Real papers`, `AI practice`) alongside `Important △`, `Reminders`, `In Progress`, `Completed`, and instant search.
+     - **Level 3 (`"paper-detail"` / `"topic-detail"`):** Multi-column Question & Concept Card grid (`Q1`..`QN`) + clickable bottom **`📊 Progress`** summary bar. Clicking a Question card emits `catalog.itemSelected` (`kind: "question"`) and lands cleanly on the working whiteboard.
+   - **4-State Visual Card Colour Semantics & `⋮` Three-Dot Card Menu:**
+     - **Not Attempted (`"default"`):** Crisp White card (`#FFFFFF`) with dark ink.
+     - **In Progress (`"in-progress"`):** Soft Slate-Blue card (`#CBD5E1` / `#DBEAFE`).
+     - **Completed (`"completed"`):** Clean Sage-Emerald card (`#DCFCE7` + `✓`).
+     - **Repeat Due Today / Overdue (`dueReminder: true` on question, or `dueCount > 0` on paper):** **Deep Crimson (`#6B1414`)** with crisp white text (`repeat due (15d)` / `2 due`), while future scheduled reminders (`reminder: "15d"`, `dueReminder: false`) keep their normal card colour with a subtle pink `15d` chip.
+     - **`⋮` Three-Dot Menu on Cards:** Clicking **`⋮`** opens an anchored menu directly on the card for `Not Attempted / In Progress / Completed` (`status.changed`), `△ Important` (`important.toggled`), `0d..15d` Reminder (`reminder.changed`), plus **`+ Create Replica`** (`catalog.actionRequested`) strictly when `authorMode == true`.
 
-   - **`chrome.setCatalog` — Load Active Subject Index, Available Subjects & Stats:**
+   - **`chrome.setCatalog` — Load Dynamic Subjects, Papers, Chapters/Topics, Logos & Stats:**
      ```json
      {
        "op": "chrome.setCatalog",
        "params": {
          "open": true,
-         "displayMode": "overlay",
-         "widthPt": 320,
+         "displayMode": "full-stage",
+         "viewLevel": "paper-detail",
          "activeTab": "papers",
          "activeSubjectId": "maths",
-         "activeItemId": "GYR-MTH-P001-Q014",
+         "activePaperId": "GYR-MTH-P008AI",
+         "activeTopicId": null,
+         "activeItemId": "GYR-MTH-P008AI-Q04",
          "autoCollapseOnSelect": true,
+         "importantIcon": "triangle",
+         "brandLogo": "<svg viewBox='0 0 180 48' xmlns='http://www.w3.org/2000/svg'>...</svg>",
          "vaultTitle": "11+ Maths",
          "vaultSubtitle": "Practice Papers, Chapters & Topics",
+         "filterTags": [
+           { "id": "real", "label": "Real papers" },
+           { "id": "ai", "label": "AI practice" }
+         ],
          "availableSubjects": [
-           { "id": "maths", "title": "Maths", "badge": "11+", "color": "#2563EB", "progressText": "84/250" },
-           { "id": "english", "title": "English", "badge": "11+", "color": "#0D9488", "progressText": "40/180" },
-           { "id": "vr", "title": "Verbal Reasoning", "badge": "11+", "color": "#7C3AED", "progressText": "52/200" },
-           { "id": "nvr", "title": "Non-Verbal", "badge": "11+", "color": "#D97706", "progressText": "61/160" }
+           { "id": "maths", "title": "Maths", "badge": "11+", "color": "#2563EB", "logo": null, "progressText": "23 Papers", "dueCount": 9 },
+           { "id": "english", "title": "English", "badge": "11+", "color": "#0D9488", "progressText": "18 Papers", "dueCount": 2 },
+           { "id": "vr", "title": "Verbal Reasoning", "badge": "11+", "color": "#7C3AED", "progressText": "16 Papers", "dueCount": 0 },
+           { "id": "nvr", "title": "Non-Verbal Reasoning", "badge": "11+", "color": "#DB2777", "progressText": "16 Papers", "dueCount": 1 }
          ],
          "papers": [
            {
-             "id": "GYR-MTH-P001",
-             "title": "Practice Paper 01",
-             "badge": "MCQ • NON-CALC",
+             "id": "GYR-MTH-P008AI",
+             "title": "Practice Paper 08-ai",
+             "badge": "6 questions · 30 min · 1 repeat due",
+             "tagBadges": [{ "label": "AI", "color": "#8B5CF6" }],
+             "tags": ["ai"],
              "color": "#2563EB",
-             "durationSec": 3000,
+             "durationSec": 1800,
+             "totalMarks": 18,
              "calculatorMode": "non-calculator",
-             "questionCount": 50,
-             "completedCount": 38,
-             "progressLabel": "38 / 50 • 86%",
-             "openCommentCount": 1,
+             "questionCount": 6,
+             "attemptedCount": 0,
+             "completedCount": 0,
+             "dueCount": 1,
+             "hasImportant": true,
+             "progressLabel": "0/6 attempted · 0 completed",
+             "openCommentCount": 0,
              "items": [
                {
-                 "id": "GYR-MTH-P001-Q014",
-                 "label": "Q14",
+                 "id": "GYR-MTH-P008AI-Q01",
+                 "label": "Q1",
+                 "sublabel": "p1",
                  "title": "Ratio Share & Difference",
-                 "badge": "2 marks",
-                 "marks": 2,
-                 "difficulty": 3,
+                 "badge": "3 marks",
+                 "marks": 3,
+                 "difficulty": 2,
                  "color": "#2563EB",
+                 "tags": ["ai"],
                  "topicIds": ["GYR-MTH-T_RAT01"],
                  "topicLabels": ["Ratio"],
-                 "status": "completed",
+                 "status": "default",
                  "important": true,
+                 "reminder": "15d",
                  "dueReminder": false,
-                 "openCommentCount": 1
+                 "openCommentCount": 0
+               },
+               {
+                 "id": "GYR-MTH-P008AI-Q04",
+                 "label": "Q4",
+                 "sublabel": "p4",
+                 "title": "Unitary Bar Model Challenge",
+                 "badge": "3 marks",
+                 "marks": 3,
+                 "difficulty": 3,
+                 "color": "#2563EB",
+                 "tags": ["ai"],
+                 "topicIds": ["GYR-MTH-T_RAT01"],
+                 "topicLabels": ["Ratio"],
+                 "status": "default",
+                 "important": true,
+                 "reminder": "15d",
+                 "dueReminder": true,
+                 "openCommentCount": 0
                }
              ]
            }
@@ -443,6 +493,7 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
              "color": "#0D9488",
              "questionCount": 28,
              "completedCount": 19,
+             "dueCount": 1,
              "masteryPct": 82.0,
              "cards": [],
              "itemIds": []
@@ -455,6 +506,7 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
              "color": "#0D9488",
              "questionCount": 14,
              "completedCount": 11,
+             "dueCount": 1,
              "masteryPct": 85.0,
              "cards": [
                {
@@ -467,7 +519,7 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
                  "openCommentCount": 0
                }
              ],
-             "itemIds": ["GYR-MTH-P001-Q014"],
+             "itemIds": ["GYR-MTH-P008AI-Q01", "GYR-MTH-P008AI-Q04"],
              "items": []
            }
          ],
@@ -475,8 +527,8 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
            "headline": "84 of 250 Questions Completed",
            "metrics": [
              { "id": "completed", "label": "Completed", "value": "84 / 250", "subtext": "33.6% of Maths", "color": "#16A34A" },
-             { "id": "important", "label": "Important ★", "value": "5", "subtext": "Starred by learner", "color": "#D97706" },
-             { "id": "due", "label": "Due Review ⏰", "value": "6", "subtext": "Scheduled today", "color": "#2563EB" }
+             { "id": "important", "label": "Important △", "value": "5", "subtext": "Flagged by learner", "color": "#EF4444" },
+             { "id": "due", "label": "Repeat Due", "value": "6", "subtext": "Due for review today", "color": "#DC2626" }
            ],
            "breakdowns": [
              { "id": "ratio", "label": "Ratio & Proportion", "valueText": "82%", "ratio": 0.82, "color": "#0D9488" },
@@ -484,7 +536,7 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
              { "id": "algebra", "label": "Algebra", "valueText": "58%", "ratio": 0.58, "color": "#D97706" }
            ]
          },
-         "authorActions": ["create-replica", "add-comment"]
+         "authorActions": ["create-replica"]
        }
      }
      ```
@@ -493,36 +545,41 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
      {
        "op": "chrome.patchCatalogItem",
        "params": {
-         "activeItemId": "GYR-MTH-P001-Q015",
+         "activeItemId": "GYR-MTH-P008AI-Q05",
          "itemPatch": {
-           "id": "GYR-MTH-P001-Q014",
+           "id": "GYR-MTH-P008AI-Q04",
            "status": "completed",
            "important": true,
-           "dueReminder": true,
+           "reminder": "15d",
+           "dueReminder": false,
            "openCommentCount": 0
          },
          "paperPatch": {
-           "id": "GYR-MTH-P001",
-           "completedCount": 39,
-           "progressLabel": "39 / 50 • 87%"
+           "id": "GYR-MTH-P008AI",
+           "attemptedCount": 1,
+           "completedCount": 1,
+           "dueCount": 0,
+           "progressLabel": "1/6 attempted · 1 completed"
          },
          "topicPatch": {
            "id": "GYR-MTH-T_RAT01",
            "completedCount": 12,
+           "dueCount": 0,
            "masteryPct": 88.0
          },
          "stats": { "...": "optional updated CatalogStatsView" }
        }
      }
      ```
-   - **`chrome.setCatalogOpen` — Open / Close / Switch Tab or Display Mode:**
+   - **`chrome.setCatalogOpen` — Open / Close / Jump Level or Tab:**
      ```json
      {
        "op": "chrome.setCatalogOpen",
        "params": {
          "open": true,
-         "displayMode": "overlay",
-         "activeTab": "topics"
+         "displayMode": "full-stage",
+         "viewLevel": "subjects",
+         "activeTab": "papers"
        }
      }
      ```
@@ -911,14 +968,14 @@ Once parameters are defined via `reactive.defineParams`, you can reference them 
 | `stepAction.requested` | Student clicks a contextual `StepActionChip` | `actionId`, `targetTokenId`, `pane` |
 | `timer.sessionExpired` | Session countdown hits `00:00` | `configuredSec`, `overtimeSec` |
 | `timer.itemExpired` | Item countdown hits `00:00` | `configuredSec`, `overtimeSec` |
-| `status.changed` | Progress status dropdown changed | `itemId`, `status` |
-| `important.toggled` | Header or catalog `Important ★` star toggled | `itemId`, `important` |
-| `reminder.changed` | Spaced-repetition reminder (`0d..15d`) changed | `itemId`, `interval` |
+| `status.changed` | Header or card `⋮` menu status changed | `itemId`, `status` (`default`\|`in-progress`\|`completed`) |
+| `important.toggled` | Header or card `⋮` menu `Important △` toggled | `itemId`, `important` |
+| `reminder.changed` | Header or card `⋮` menu reminder (`0d..15d`) changed | `itemId`, `interval` |
 | `comment.saved` | User/author saves a comment (+ screenshot/image/PDF attachments) | `entry` (`FeedbackEntry` with full `attachments[]`) |
 | `comment.deleted` | Comment deleted | `commentId`, `itemId`, `partId` |
-| `catalog.itemSelected` | User clicks a Subject, Paper, Topic, Concept Card, or Question in Left Band | `kind` (`subject`\|`paper`\|`topic`\|`topic-card`\|`question`), `itemId`, `subjectId`, `paperId`, `topicId` |
-| `catalog.toggled` | Left-Band Book Index opened, closed, pinned, or tab-switched | `open`, `displayMode` (`overlay`\|`docked`), `activeTab` (`papers`\|`topics`\|`stats`) |
-| `catalog.actionRequested` | Authorised author triggers a card action (`authorMode: true` only) | `action`, `targetKind`, `targetId` |
+| `catalog.itemSelected` | User clicks a Subject, Paper, Topic, Concept Card, or Question in Full-Page Index | `kind` (`subject`\|`paper`\|`topic`\|`topic-card`\|`question`), `itemId`, `subjectId`, `paperId`, `topicId` |
+| `catalog.toggled` | Full-Page Index opened, closed (`Open Whiteboard`), or level/tab switched | `open`, `displayMode` (`full-stage`\|`overlay`\|`docked`), `activeTab` (`papers`\|`topics`\|`stats`), `viewLevel` |
+| `catalog.actionRequested` | Authorised author triggers a card `⋮` action (`authorMode: true` only) | `action`, `targetKind`, `targetId` |
 | `media.stateChanged` | Video/audio play/pause/seek/PiP state changes | `mediaId`, `kind`, `status`, `playing`, `currentTimeMs`, `durationMs`, `minimized` |
 | `media.ended` | Video/audio finishes playback | `mediaId`, `kind`, `durationMs` |
 
@@ -943,7 +1000,7 @@ Sent by classroom LAN iPads, custom native shells (`visage-ios`), or automated t
 | `requestStepAction` | `actionId`, `targetTokenId` *(opt)*, `pane` | `stepAction.requested` |
 | `saveComment` | `entry: FeedbackEntry` | `comment.saved` |
 | `deleteComment` | `commentId` *(opt)*, `itemId`, `partId` *(opt)* | `comment.deleted` |
-| `selectCatalogItem` | `kind`, `itemId`, `subjectId` *(opt)*, `paperId` *(opt)*, `topicId` *(opt)* | `catalog.itemSelected` |
+| `selectCatalogItem` | `targetKind`, `itemId`, `subjectId` *(opt)*, `paperId` *(opt)*, `topicId` *(opt)* | `catalog.itemSelected` |
 | `toggleCatalog` | `open: bool`, `displayMode` *(opt)*, `activeTab` *(opt)* | `catalog.toggled` |
 | `requestCatalogAction` | `action`, `targetKind`, `targetId` *(honoured only when `authorMode == true`)* | `catalog.actionRequested` |
 | `controlMedia` | `mediaId` *(opt)*, `op: { "action": "play" \| "pause" \| "seek" \| ... }` | `media.stateChanged` |
@@ -962,7 +1019,7 @@ Querying `{"type": "getState"}` returns:
 - `objects`: Every live `SceneObjectSummary` on the board (`id`, `kind`: `"writing"` | `"diagram2-d"` | `"image"` | `"scene3-d"` | `"scribble"` | `"annotation"` | `"prompt"`, `pane`, `zone`, `bounds`, and `tokens: [{"tokenId": "...", "bounds": {...}}]`)
 - `optics`: `{ "cameraScale", "cameraCenter", "loupe" }`
 - `chrome`: Complete header & feedback snapshot (`authorMode`, `activeItemId`, `status`, `important`, `reminder`, `dictionaryEnabled`, `partTabs`, `pinnedReferences`, `stepActions`, `feedback` — attachment `dataBase64` stripped unless `includeAttachmentData: true`)
-- `catalog`: `{ "open": false, "displayMode": "overlay", "activeTab": "papers", "activeSubjectId": "maths", "activeItemId": "GYR-MTH-P001-Q014", "subjectCount": 4, "paperCount": 5, "topicCount": 8, "questionCount": 250 }`
+- `catalog`: `{ "open": false, "displayMode": "full-stage", "viewLevel": "paper-detail", "activeTab": "papers", "activeSubjectId": "maths", "activePaperId": "GYR-MTH-P008AI", "activeItemId": "GYR-MTH-P008AI-Q04", "subjectCount": 4, "paperCount": 23, "topicCount": 14, "questionCount": 250 }`
 - `timers`: `{ "session": {...}, "item": {...} }`
 - `detourDepth`, `detourStack`
 - `userInk`: `{ "strokeCount", "strokeIds", "activeStudentIds" }`

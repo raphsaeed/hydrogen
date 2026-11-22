@@ -196,10 +196,12 @@ sequenceDiagram
     end
 ```
 
-### 4.6 Minimal 4-View Hydrogen Web Console — Dark-Slate Card-Grid Design (`src/server/` + `web/`)
+### 4.6 Minimal 4-View Hydrogen Web Console — Light, Soft Card-Grid Theme (`src/server/` + `web/`)
 Served by `axum` on `http://127.0.0.1:7430`:
-- **Unified Dark-Slate (`#151A24`) Visual Aesthetic:**
-  - Mirrors Carbon's `displayMode: "full-stage"` gallery: deep `#151A24` slate canvas, top bar with pill breadcrumbs (`[🏠] > [11+ Maths] > [Practice Papers] > [Paper 01]`) on the left and centered product `brandLogo` (`gyara-white.png`) in the middle, gold active filter pills (`#FACC15`), jewel-toned Subject Vault Hero Cards, and crisp high-contrast Paper/Question cards (`#FFFFFF` unreviewed/ready, `#CBD5E1` in-progress/compiling, `#DCFCE7` verified, `#6B1414` Deep Crimson when open `fix` comments or gate errors require attention, plus `#8B5CF6` violet `AI` replica badges).
+- **Light, Soft Card-Grid Aesthetic + Vault Brand Logo:**
+  - Uses a calm, eye-friendly **light, soft theme** (`#F6F7FB` soft porcelain-slate canvas, `#FFFFFF` elevated cards with `#E2E8F0` hairline borders and subtle soft shadows—ideal alongside white PDF source crops and KaTeX working):
+  - **Header & Navigation:** Clean light top bar featuring pill breadcrumbs (`[🏠] > [11+ Maths] > [Practice Papers] > [Paper 01]`) on the left and the centered **`Gyara+` light-surface logo (`GYR-LOGO-BLUE` / `gyara-blue.png`)** served directly from the `.raphs` vault `blobs` *(while `GYR-LOGO-WHITE` is used inside jewel-toned Subject Cards and sent to Carbon's dark Full-Stage Gallery)*.
+  - **Soft Pastel Multi-State Card Grid:** Preserves the same 3-level card-grid hierarchy (`Subjects` $\to$ `Papers / Topics` $\to$ `Questions`) with soft status tints: `#FFFFFF` (ready/unreviewed), `#EFF6FF` soft sky (compiling/in-progress), `#ECFDF5` soft sage-mint (verified), `#FEF2F2` with `#FECACA` border (needs attention: open `fix` comments or gate errors), and `#EDE9FE`/`#6D28D9` soft violet `AI` replica badges.
 - **REST API (`/api/...`):**
   - `GET /api/vaults` & `POST /api/vaults/open` — switch between `gyara-maths.raphs`, `gyara-nvr.raphs`, etc.
   - `GET /api/catalog` — returns `CourseCatalogSnapshot` (Books, Chapters, Papers, Topics, Types, Question Summaries, Comment Counts).

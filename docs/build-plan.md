@@ -137,9 +137,9 @@
     - `comment.saved` $\to$ persist comment + `Snap Board` PNG blob straight into `gyara-maths.raphs` (`upsert_course_comment`) and notify the Web UI live,
     - `comment.deleted` $\to$ remove comment in `gyara-maths.raphs`,
     - `catalog.actionRequested` (`"create-replica"`) $\to$ queue replica job in Hydrogen.
-- [ ] **4.3 Minimal 4-View Dark-Slate Card-Grid HTML/TypeScript Frontend (`web/`):**
-  - Implement the shared **dark-slate (`#151A24`) card-grid aesthetic** matching Carbon's Full-Stage Course Gallery (centered `Gyara+` `brandLogo` header, `[🏠] > [Subject] > [Paper]` pill breadcrumbs, `#FACC15` active filter pills, jewel-toned Subject Vault Hero Cards, and multi-state Paper/Question cards with `#8B5CF6` `AI` badges and `#6B1414` Deep Crimson open-comment/attention highlights):
-  - **View 1 — Vault Browser & Dark-Slate Card Grid:** Drill down Subject Vaults $\to$ 3–4 col Papers/Chapters/Topics grid $\to$ 4–6 col Question cards; filter by Real Papers, `AI` Practice, Topic, Question Type, Difficulty (`1–5`), `MCQ`/`Written`, and Open Comments.
+- [ ] **4.3 Minimal 4-View Light, Soft Card-Grid HTML/TypeScript Frontend (`web/`):**
+  - Implement a **light, soft card-grid theme** (`#F6F7FB` soft porcelain canvas, `#FFFFFF` elevated cards with `#E2E8F0` borders & subtle shadows, centered `Gyara+` **`GYR-LOGO-BLUE`** header logo loaded from the `.raphs` vault, `[🏠] > [Subject] > [Paper]` pill breadcrumbs, soft filter pills, Subject Vault Cards, and soft-tinted Paper/Question cards: `#EFF6FF` compiling, `#ECFDF5` verified, `#FEF2F2` open-comment/attention highlight, and `#EDE9FE` soft violet `AI` replica badges):
+  - **View 1 — Vault Browser & Light-Soft Card Grid:** Drill down Subject Vaults $\to$ 3–4 col Papers/Chapters/Topics grid $\to$ 4–6 col Question cards; filter by Real Papers, `AI` Practice, Topic, Question Type, Difficulty (`1–5`), `MCQ`/`Written`, and Open Comments.
   - **View 2 — Question, `9 → 1` & Source Crop Inspector:** Side-by-side private PDF crop vs. compiled question; interactive Step & Sub-Level (`9..1`) selector with 1-click **"Send / Step Live on Carbon"**, **"Regenerate with Prompt"**, and **"Create Replica"** buttons.
   - **View 3 — Comments & Screenshots Inbox:** View open/resolved Carbon comments + `Snap Board` screenshots, edit notes, trigger fixes, and inspect `course_question_revisions` diffs.
   - **View 4 — Ingest, Live Job Queue & Export:** Upload/select inbox paper, watch live per-question progress bars, and trigger `export_clean_course_bundle`.

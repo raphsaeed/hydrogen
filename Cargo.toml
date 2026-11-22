@@ -37,3 +37,7 @@ thiserror = "2.0"
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "net", "sync", "fs", "time", "io-util"] }
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+
+# Pure-Rust PDF rasterization & PNG image slicing (`unsafe_code = "forbid"`, zero C/C++ pdfium/poppler/opencv)
+hayro = "0.9"
+png = "0.18"

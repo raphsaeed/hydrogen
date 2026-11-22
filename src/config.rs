@@ -142,6 +142,11 @@ impl HydrogenConfig {
         self.product_dir(product).join("archive").join(subject)
     }
 
+    /// Git-ignored local source cross-reference path (`products/<product>/private-xref.json`).
+    pub fn private_xref_path(&self, product: &str) -> PathBuf {
+        self.product_dir(product).join("private-xref.json")
+    }
+
     /// Canonical `.raphs` vault stem for `(product, subject)` (e.g., `gyaraplus` + `maths` -> `gyara-maths`).
     pub fn vault_stem(product: &str, subject: &str) -> String {
         let prefix = match product {

@@ -10,7 +10,7 @@
 | Phase | Milestone Title | Status |
 | :---: | :--- | :---: |
 | **Phase 1** | Workspace Infrastructure & Core Sibling Wiring (`memory_core_rs` + `theta_calc` + `Carbon`) | `[x] Complete` |
-| **Phase 2** | Domain Blueprints, Quality Gates, PDF Slicer & CLI *(Enables Antigravity Authoring)* | `[ ] Pending` |
+| **Phase 2** | Domain Blueprints, Quality Gates, PDF Slicer & CLI *(Enables Antigravity Authoring)* | `[x] Complete` |
 | **Phase 3** | Native Rust Gemini 4 Agentic Compiler *(Enables Rust API Single & Batch Authoring)* | `[ ] Pending` |
 | **Phase 4** | Minimal Hydrogen Web Console (`axum` + HTML/TS) & Live Carbon/Theta Bridge | `[ ] Pending` |
 | **Phase 5** | **Milestone 1 Proving Ground:** 1st Real Question Paper End-to-End & Live Bug-Fix Pass | `[ ] Pending` |
@@ -82,17 +82,17 @@
 ## Phase 2: Domain Blueprints, Quality Gates, PDF Slicer & CLI *(Antigravity Path)*
 *Goal: Lock the strongly-typed `question_json` and `solution_json` schemas, build the deterministic verification gates, build the private PDF/image slicer, and expose `hydrogen` CLI commands so Antigravity can process test questions/papers right away.*
 
-- [ ] **2.1 Universal ID, RuleLoader & Blueprint Types (`src/rules/` & `src/domain/`):**
+- [x] **2.1 Universal ID, RuleLoader & Blueprint Types (`src/rules/` & `src/domain/`):**
   - Implement 4-tier `RuleLoader` (`src/rules/`) parsing YAML frontmatter (`theta` preset, `defaults`, `level_9_policy`) and concatenating `rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/{common,levels}.md` (+ optional tier overlay) with strict product isolation.
   - Implement `UniversalId` parser/builder (`GYR-MTH-P001-Q014`, replicas `-R01`, chapters `B01-CH03`, cards `-C01`, sub-addressing `:a:S01:L09`).
   - Implement `QuestionBlueprint` (`question_json`) and `SolutionBlueprint` (`solution_json`: multi-part state, `Steps × Sub-Levels 9..1`, Carbon commands, Theta checks, MCQ trap diagnostics, and SIGMA narration scripts) matching [`solution-levels.md`](./solution-levels.md) §6.
-- [ ] **2.2 Deterministic Quality Gate (`src/compiler/gate.rs`):**
+- [x] **2.2 Deterministic Quality Gate (`src/compiler/gate.rs`):**
   - **Theta Math Gate:** Verify every `thetaVerification` check, multi-part `exportedExact` chain, `Check` equivalence, and 5-option (`A–E`) MCQ uniqueness (all 5 distinct, exactly 1 equal to `answerKey.exactValue`).
   - **Carbon Command, Warm-Paper Theme & KaTeX Gate ([`carbon-visual-theme.md`](./carbon-visual-theme.md)):** Verify no unescaped ASCII math leaks outside `$...$`, valid canonical Carbon enums (`zone: "spine" | "scratch" | "diagram"`, `style: "typeset"`, `content`), `c1..c8` editorial ink/card tokens (rejecting dark fills or invisible white/yellow ink on `#FDFCF9` paper), diagram stroke widths `<= 2.2 pt`, zero literal `✓`/`✔` inside `"kind": "check"` labels, PNG-only `brandLogo`/`logo`, and valid `targetId` / `\htmlId` ordering.
   - **Pedagogical & Clean-Room Lint:** Enforce contiguous `9 → min_sublevel` numbering, anti-prose-wall word caps on board callouts, non-identical adjacent levels, and zero external paper names/raw scans.
-- [ ] **2.3 Clean-Room PDF/Image Slicer & `private-xref.json` (`src/ingest/`):**
+- [x] **2.3 Clean-Room PDF/Image Slicer & `private-xref.json` (`src/ingest/`):**
   - Render PDF pages to high-DPI working images in `archive/` (never inside `.raphs`), slice individual question/diagram crops, and record `{ universal_id, source_file, page, bbox }` in `private-xref.json`.
-- [ ] **2.4 Complete `hydrogen` CLI (`src/main.rs`):**
+- [x] **2.4 Complete `hydrogen` CLI (`src/main.rs`):**
   - Implement CLI commands:
     - `hydrogen init-vault`
     - `hydrogen slice-paper <pdf-or-image>`

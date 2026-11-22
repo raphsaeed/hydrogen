@@ -118,56 +118,78 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
     };
     mem.set_course_meta(actor, None, &meta)?;
 
-    // 3. Seed baseline 11+ Maths curriculum strands (`course_topics`).
+    // 3. Clean up any legacy hyphenated topic IDs (`GYR-MTH-T-*`) before seeding the 8 canonical
+    //    `rules/gyaraplus/maths/common.md` underscore IDs (`GYR-MTH-T_NUM` .. `GYR-MTH-T_LOG`).
+    for legacy_id in [
+        "GYR-MTH-T-NUM",
+        "GYR-MTH-T-FDP",
+        "GYR-MTH-T-RAT",
+        "GYR-MTH-T-ALG",
+        "GYR-MTH-T-MEA",
+        "GYR-MTH-T-GEO",
+        "GYR-MTH-T-STA",
+        "GYR-MTH-T-LOG",
+    ] {
+        let _ = mem.delete_topic(actor, None, legacy_id)?;
+    }
+
+    // 4. Seed the 8 canonical 11+ Maths curriculum strands (`course_topics`).
     let baseline_topics = [
         (
-            "GYR-MTH-T-NUM",
+            "GYR-MTH-T_NUM",
             "NUM",
             "Number, Place Value & Operations",
-            "Place value, BODMAS, factors, multiples, primes, squares/cubes, negative numbers, and rounding.",
+            "Place value, BODMAS, factors/HCF/LCM, primes, negative numbers, powers/roots, and rounding.",
             10,
         ),
         (
-            "GYR-MTH-T-FDP",
+            "GYR-MTH-T_FDP",
             "FDP",
             "Fractions, Decimals & Percentages",
-            "Mixed fractions, exact equivalences, percentage change, reverse percentages, and fraction-of-amount problems.",
+            "Mixed fractions, fracCancel, exact equivalences, percentage changes, and reverse percentages.",
             20,
         ),
         (
-            "GYR-MTH-T-RAT",
+            "GYR-MTH-T_RAT",
             "RAT",
             "Ratio, Proportion & Scaling",
-            "Part-to-part and part-to-whole ratios, recipe/map scaling, direct and inverse unitary proportion, and changing ratios.",
+            "Ratio sharing, unitary scaling, recipes/maps, direct/inverse proportion, and shifting ratios.",
             30,
         ),
         (
-            "GYR-MTH-T-ALG",
+            "GYR-MTH-T_ALG",
             "ALG",
             "Algebra, Equations & Sequences",
-            "Forming linear equations with initials, substitution, simultaneous elimination, clearing fractions, and nth-term sequences.",
+            "Linear equations with initials, substitution, simultaneous elimination, clearing fractions, and nth term.",
             40,
         ),
         (
-            "GYR-MTH-T-MEA",
+            "GYR-MTH-T_MEA",
             "MEA",
             "Measurement, Time, Speed & Money",
-            "Metric conversions, timetables/clocks, Speed-Distance-Time, combined work rates, and multi-buy money word problems.",
+            "Metric units, time/timetables, Speed-Distance-Time, perimeter/area/volume, and money problems.",
             50,
         ),
         (
-            "GYR-MTH-T-GEO",
+            "GYR-MTH-T_GEO",
             "GEO",
             "2D & 3D Geometry, Angles & Coordinate Grids",
-            "Polygon angle rules, compound area/perimeter, 4-quadrant coordinates, reflections/rotations, 3D nets, and cuboid volume.",
+            "Angle laws, polygons, coordinates/transformations, bearings, 3D solids, and cube nets.",
             60,
         ),
         (
-            "GYR-MTH-T-STA",
+            "GYR-MTH-T_STA",
             "STA",
             "Statistics, Charts, Venn Diagrams & Probability",
-            "Mean/median/mode/range, reverse-mean totals, bar/pie/line charts, two-way tables, Venn sets, and exact probability.",
+            "Mean/median/mode/range, pieChart, barChart, lineChart, two-way tables, Venn sets, and probability.",
             70,
+        ),
+        (
+            "GYR-MTH-T_LOG",
+            "LOG",
+            "Word & Logic Puzzles",
+            "Catch-up/rate chunks, working backwards, combinatorics, and calendar/clock logic puzzles.",
+            80,
         ),
     ];
 
@@ -185,14 +207,14 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
         mem.upsert_topic(actor, None, &input)?;
     }
 
-    // 4. Seed initial 11+ Maths problem archetypes (`course_question_types`).
+    // 5. Seed initial 11+ Maths problem archetypes (`course_question_types`).
     let question_types = [
         (
             "GYR-MTH-QT-ALG-WORD",
             "ALG-WORD",
             "Algebraic Word & Age/Coin Problem",
             "Multi-step word problems solved cleanly by letting initials represent unknowns and forming linear equations.",
-            Some("GYR-MTH-T-ALG"),
+            Some("GYR-MTH-T_ALG"),
             10,
         ),
         (
@@ -200,7 +222,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "ARITH",
             "Number Properties & BODMAS Fluency",
             "Exact arithmetic, factors/LCM/HCF, prime factorisation, and digit/place-value puzzles.",
-            Some("GYR-MTH-T-NUM"),
+            Some("GYR-MTH-T_NUM"),
             20,
         ),
         (
@@ -208,7 +230,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "FDP",
             "Fraction, Decimal & Percentage Equivalence",
             "Multi-stage fraction remainders, reverse percentages, and mixed-number operations.",
-            Some("GYR-MTH-T-FDP"),
+            Some("GYR-MTH-T_FDP"),
             30,
         ),
         (
@@ -216,7 +238,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "RATIO",
             "Ratio Sharing & Shifting Proportions",
             "Sharing quantities, scaling parts, and before/after ratio transfers.",
-            Some("GYR-MTH-T-RAT"),
+            Some("GYR-MTH-T_RAT"),
             40,
         ),
         (
@@ -224,7 +246,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "RATES",
             "Speed-Distance-Time, Clocks & Work Rates",
             "Journey stages, average speed, clock-face angles/mirror clocks, and combined tap/worker rates.",
-            Some("GYR-MTH-T-MEA"),
+            Some("GYR-MTH-T_MEA"),
             50,
         ),
         (
@@ -232,7 +254,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "GEO2D",
             "2D Angles, Compound Area & Coordinates",
             "Missing angles, shaded/compound shapes, and 4-quadrant coordinate transformations.",
-            Some("GYR-MTH-T-GEO"),
+            Some("GYR-MTH-T_GEO"),
             60,
         ),
         (
@@ -240,7 +262,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "GEO3D",
             "3D Solids, Nets & Painted/Stacked Cubes",
             "Volume, surface area, cube nets, and 3D spatial counting.",
-            Some("GYR-MTH-T-GEO"),
+            Some("GYR-MTH-T_GEO"),
             70,
         ),
         (
@@ -248,7 +270,7 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "DATA",
             "Averages, Venn Sets, Charts & Probability",
             "Reverse mean, pie/bar/table interpretation, 2- or 3-set Venn diagrams, and exact fraction probability.",
-            Some("GYR-MTH-T-STA"),
+            Some("GYR-MTH-T_STA"),
             80,
         ),
         (
@@ -256,8 +278,16 @@ pub fn seed_gyara_maths(mem: &mut Memory, actor: &str, assets_dir: &Path) -> Res
             "SEQ",
             "Sequences, Function Machines & Custom Operators",
             "Linear/triangular/square sequences, inverse machines, and novel symbol definitions.",
-            Some("GYR-MTH-T-ALG"),
+            Some("GYR-MTH-T_ALG"),
             90,
+        ),
+        (
+            "GYR-MTH-QT-LOGIC",
+            "LOGIC",
+            "Catch-Up, Combinatorics & Working-Backwards Puzzles",
+            "Closing-the-gap problems, handshake/counting combinations, calendar shifts, and multi-clue deduction.",
+            Some("GYR-MTH-T_LOG"),
+            100,
         ),
     ];
 

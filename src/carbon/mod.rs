@@ -1,6 +1,7 @@
 //! Async `Carbon Protocol v0.1` WebSocket client (`ws://<host>:7420/carbon`) and catalog projector.
 
 pub mod catalog;
+pub mod preview;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -559,10 +560,10 @@ mod tests {
                             actor: None,
                             event: CarbonEvent::CatalogItemSelected {
                                 kind: CatalogSelectionKind::Topic,
-                                item_id: "GYR-MTH-T-ALG".to_string(),
+                                item_id: "GYR-MTH-T_ALG".to_string(),
                                 subject_id: Some("GYR-MTH".to_string()),
                                 paper_id: None,
-                                topic_id: Some("GYR-MTH-T-ALG".to_string()),
+                                topic_id: Some("GYR-MTH-T_ALG".to_string()),
                             },
                         });
                         if let Ok(raw) = encode_server_message(&click_ev) {

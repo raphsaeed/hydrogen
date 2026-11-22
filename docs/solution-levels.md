@@ -161,10 +161,10 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
     {
       "op": "interact.ask",
       "params": {
-        "id": "q-mcq",
+        "promptId": "q-mcq",
         "pane": "left",
-        "kind": "checkpoint",
-        "prompt": "Select one answer:",
+        "kind": "choice-chips",
+        "label": "Select one answer:",
         "choices": [
           { "id": "A", "label": "$\\pounds 38.40$" },
           { "id": "B", "label": "$\\pounds 57.60$" },
@@ -225,7 +225,7 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
           },
           {
             "op": "focus.annotate",
-            "params": { "id": "ans_chk", "pane": "right", "targetId": "ans_final", "kind": "check", "color": "#16A34A" }
+            "params": { "id": "ans_chk", "targetIds": ["ans_final"], "kind": "check", "color": "#16A34A" }
           }
         ]
       },

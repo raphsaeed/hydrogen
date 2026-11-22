@@ -16,11 +16,25 @@ use carbon_protocol::{
 use futures_util::{SinkExt, StreamExt};
 use hydrogen::carbon::CarbonClient;
 use hydrogen::carbon::catalog::project_full_stage_catalog;
+use hydrogen::carbon::preview::{PreviewSelection, build_question_preview_batch};
+use hydrogen::compiler::{verify_blueprints, verify_question_package};
 use hydrogen::config::HydrogenConfig;
+use hydrogen::domain::{
+    ContainerSegment, PaperPackage, QuestionBlueprint, QuestionPackage, SolutionBlueprint,
+    UniversalId,
+};
 use hydrogen::error::{HydrogenError, Result};
+use hydrogen::ingest::{
+    CropBox, CropSpec, DEFAULT_RENDER_DPI, NormalizedBBox, PixelBBox, SliceMode, SlicePaperRequest,
+    slice_paper,
+};
+use hydrogen::rules::RuleLoader;
 use hydrogen::theta::{StagePresetConfig, ThetaService};
 use hydrogen::vault::VaultManager;
 use hydrogen::vault::seed::{GYR_LOGO_BLUE_ID, GYR_LOGO_WHITE_ID};
+use memory_core_rs::{CoursePaperInput, CoursePaperSectionInput, CourseStimulusInput};
+use serde::Deserialize;
+use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -43,8 +57,14 @@ async fn run_cli() -> Result<()> {
     match subcmd {
         "doctor" => cmd_doctor(&args[1..]).await,
         "init-vault" => cmd_init_vault(&args[1..]).await,
-        "catalog" => cmd_catalog(&args[1..]).await,
+        "slice-paper" => cmd_slice_paper(&args[1..]),
         "theta" => cmd_theta(&args[1..]),
+        "verify-question" => cmd_verify_question(&args[1..]),
+        "upsert-question" => cmd_upsert_question(&args[1..]).await,
+        "upsert-paper" => cmd_upsert_paper(&args[1..]).await,
+        "catalog" => cmd_catalog(&args[1..]).await,
+        "preview-carbon" => cmd_preview_carbon(&args[1..]).await,
+        "pack" => cmd_pack(&args[1..]).await,
         "demo" => cmd_demo(&args[1..]).await,
         "-V" | "--version" | "version" => {
             println!("hydrogen v{}", hydrogen::VERSION);
@@ -68,13 +88,28 @@ USAGE:
     hydrogen <SUBCOMMAND> [OPTIONS]
 
 SUBCOMMANDS:
-    doctor [--carbon <ws-url>]              Verify Theta (<1ms), gyara-maths.raphs (Schema 2.3.0), & Carbon WS
+    doctor [--carbon <ws-url>]              Verify 4-Tier Rules, Theta (<1ms), Vault (Schema 2.3.0), & Carbon WS
     init-vault [--product P] [--subject S] [--pack]
-                                            Initialize/seed L7 vault + Gyara+ logo blobs (and optionally pack .raphs)
-    catalog [--product P] [--subject S] [--carbon-json]
+                                            Initialize/seed L7 vault + PNG brand logo blobs
+    slice-paper <pdf-or-png> [OPTIONS]      Render pages & slice clean-room crops into archive/ + private-xref.json
+        Options: [--paper-id GYR-MTH-P001] [--product P] [--subject S] [--dpi 180] [--pages 1-2]
+                 [--pages-only | --auto | --id UID --page N --bbox x,y,w,h | --bbox-px x,y,w,h | --crops-json f.json]
+                 [--move-inbox]
+    theta <tool> '<json>' | <expr>          Call Theta tool (`calc.eval`, `calc.solve`, ...) or evaluate <expr>
+    verify-question <file.json> [OPTIONS]   Run deterministic Theta + Carbon + Warm-Paper + Clean-Room gates
+        Options: [--product P] [--subject S] [--tier T] [--json]
+    upsert-question <file.json> [OPTIONS]   Verify and atomically upsert question + L9..L1 solution into L7 vault
+        Options: [--product P] [--subject S] [--tier T] [--pack]
+    upsert-paper <file.json> [OPTIONS]      Verify and atomically upsert paper, sections, stimuli & questions
+        Options: [--product P] [--subject S] [--tier T] [--pack]
+    catalog [--product P] [--subject S] [--carbon-json] [--full-logo]
                                             Inspect L7 CourseCatalogSnapshot or emit Carbon Full-Stage JSON
-    theta <expr>                            Evaluate an exact expression with 11+ Maths Theta preset
-    demo [--carbon <ws-url>]                Run interactive Phase 1 end-to-end demo (Vault + Theta + Carbon WS)
+    preview-carbon <question-id> [OPTIONS]  Push Split-Board question + (part, step, sublevel) live to Carbon
+        Options: [--part PART] [--step S01] [--level 9] [--substep 0] [--reveal-answer]
+                 [--carbon <ws-url>] [--loopback] [--product P] [--subject S]
+    pack [--product P] [--subject S] [--clean-out <out.raphs> --customer-key <key>]
+                                            Pack live SQLCipher container into <stem>.raphs (or clean customer export)
+    demo [--carbon <ws-url>]                Run interactive end-to-end demo (Vault + Theta + Carbon WS)
     version                                 Print version",
         hydrogen::VERSION
     );
@@ -98,26 +133,61 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+/// Return the first positional argument (not starting with `--` and not the value of a known `--flag <val>`).
+fn first_positional<'a>(args: &'a [String], valued_flags: &[&str]) -> Option<&'a str> {
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if valued_flags.contains(&arg.as_str()) {
+            skip_next = true;
+            continue;
+        }
+        if arg.starts_with('-') {
+            continue;
+        }
+        return Some(arg.as_str());
+    }
+    None
+}
+
+async fn open_vault_for(
+    cfg: &HydrogenConfig,
+    product: &str,
+    subject: &str,
+) -> Result<VaultManager> {
+    VaultManager::open_or_create(
+        cfg.vault_sqlite_path(product, subject),
+        cfg.vault_bundle_path(product, subject),
+        &cfg.lesson_key,
+        &cfg.device_id,
+    )
+}
+
 async fn cmd_doctor(args: &[String]) -> Result<()> {
     let cfg = HydrogenConfig::load(workspace_root()?)?;
-    let carbon_url = parse_flag_value(args, "--carbon").unwrap_or_else(|| cfg.carbon_ws_url.clone());
+    let carbon_url =
+        parse_flag_value(args, "--carbon").unwrap_or_else(|| cfg.carbon_ws_url.clone());
 
-    println!("=== Hydrogen Phase 1 Doctor (v{}) ===", hydrogen::VERSION);
-    println!("1. Workspace & Rules:");
+    let rule_loader = RuleLoader::new(&cfg.rules_dir);
+    let rulebook = rule_loader.load(&cfg.default_product, &cfg.default_subject, None)?;
+
+    println!("=== Hydrogen Doctor (v{}) ===", hydrogen::VERSION);
+    println!("1. Workspace & 4-Tier Isolated Rules:");
     println!("   root       : {}", cfg.workspace_root.display());
     println!(
-        "   rules/     : {} ({})",
+        "   rulebook   : {} ({} tiers loaded · course_id={} · stage={})",
         cfg.rules_dir.display(),
-        if cfg.rules_dir.join("gyaraplus/maths/common.md").is_file() {
-            "4-tier isolated rules OK"
-        } else {
-            "MISSING gyaraplus/maths/common.md"
-        }
+        rulebook.sections.len(),
+        rulebook.frontmatter.course_id,
+        rulebook.frontmatter.stage_label
     );
 
     // 2. Theta check
     let t0 = Instant::now();
-    let theta = ThetaService::new(StagePresetConfig::gyara_11plus_maths());
+    let theta = ThetaService::new(rulebook.frontmatter.theta.to_stage_preset());
     let eval_out = theta.eval_expr("2 3/4 + 1 1/2")?;
     let mcq_idx = theta.verify_mcq_options(&["3 3/4", "4", "4 1/4", "4 1/2", "5"], "17/4")?;
     let theta_us = t0.elapsed().as_micros();
@@ -132,16 +202,10 @@ async fn cmd_doctor(args: &[String]) -> Result<()> {
     let product = &cfg.default_product;
     let subject = &cfg.default_subject;
     let sqlite_path = cfg.vault_sqlite_path(product, subject);
-    let bundle_path = cfg.vault_bundle_path(product, subject);
     let assets_dir = cfg.product_assets_dir(product);
 
     let v0 = Instant::now();
-    let vault = VaultManager::open_or_create(
-        &sqlite_path,
-        &bundle_path,
-        &cfg.lesson_key,
-        &cfg.device_id,
-    )?;
+    let vault = open_vault_for(&cfg, product, subject).await?;
     let seeded = vault.seed_gyara_maths(&assets_dir).await?;
     let status = vault.status().await?;
     let check = vault.self_check().await?;
@@ -157,14 +221,26 @@ async fn cmd_doctor(args: &[String]) -> Result<()> {
     let blue_asset = vault.get_asset_info(GYR_LOGO_BLUE_ID).await?;
     let vault_ms = v0.elapsed().as_millis();
 
-    println!("3. Course Vault (`memory_core_rs {}` / Schema `{}`):", memory_core_rs::VERSION, status.schema_version);
-    println!("   container  : {} ({vault_ms} ms open+seed)", sqlite_path.display());
-    println!("   self_check : ok={} · crypto={}", check.ok, status.crypto_version);
     println!(
-        "   course_id  : {} · {} topics · {} question types · catalog_snapshot={} us",
+        "3. Course Vault (`memory_core_rs {}` / Schema `{}`):",
+        memory_core_rs::VERSION,
+        status.schema_version
+    );
+    println!(
+        "   container  : {} ({vault_ms} ms open+seed)",
+        sqlite_path.display()
+    );
+    println!(
+        "   self_check : ok={} · crypto={}",
+        check.ok, status.crypto_version
+    );
+    println!(
+        "   course_id  : {} · {} topics · {} question types · {} papers · {} questions · catalog_snapshot={} us",
         seeded.course_id,
         snap.topics.len(),
         snap.question_types.len(),
+        snap.papers.len(),
+        snap.questions.len(),
         cat_us
     );
     if let (Some(w), Some(b)) = (white_asset, blue_asset) {
@@ -181,7 +257,7 @@ async fn cmd_doctor(args: &[String]) -> Result<()> {
         );
     }
 
-    // 4. Carbon probe (live if open, clean standalone note if closed)
+    // 4. Carbon probe
     println!("4. Carbon Whiteboard Probe (`{carbon_url}`):");
     match CarbonClient::connect(&carbon_url, &cfg.device_id, Duration::from_millis(800)).await {
         Ok(client) => {
@@ -210,20 +286,17 @@ async fn cmd_doctor(args: &[String]) -> Result<()> {
 
 async fn cmd_init_vault(args: &[String]) -> Result<()> {
     let cfg = HydrogenConfig::load(workspace_root()?)?;
-    let product = parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
-    let subject = parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
     let should_pack = has_flag(args, "--pack");
 
     let sqlite_path = cfg.vault_sqlite_path(&product, &subject);
     let bundle_path = cfg.vault_bundle_path(&product, &subject);
     let assets_dir = cfg.product_assets_dir(&product);
 
-    let vault = VaultManager::open_or_create(
-        &sqlite_path,
-        &bundle_path,
-        &cfg.lesson_key,
-        &cfg.device_id,
-    )?;
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
 
     if product == "gyaraplus" && subject == "maths" {
         let summary = vault.seed_gyara_maths(&assets_dir).await?;
@@ -251,24 +324,519 @@ async fn cmd_init_vault(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn cmd_slice_paper(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = [
+        "--product",
+        "--subject",
+        "--paper-id",
+        "--dpi",
+        "--pages",
+        "--id",
+        "--page",
+        "--bbox",
+        "--bbox-px",
+        "--crops-json",
+        "--min-gap",
+        "--start-seq",
+    ];
+    let src_arg = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config("usage: hydrogen slice-paper <pdf-or-png> [options]".into())
+    })?;
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let paper_id = parse_flag_value(args, "--paper-id");
+    let dpi = match parse_flag_value(args, "--dpi") {
+        Some(s) => s
+            .parse::<f32>()
+            .map_err(|_| HydrogenError::Config(format!("invalid --dpi '{s}'")))?,
+        None => DEFAULT_RENDER_DPI,
+    };
+    let page_range = match parse_flag_value(args, "--pages") {
+        Some(spec) => Some(parse_page_range(&spec)?),
+        None => None,
+    };
+    let move_inbox = has_flag(args, "--move-inbox");
+
+    let mode = if has_flag(args, "--pages-only") {
+        SliceMode::PagesOnly
+    } else if let Some(manifest_path) = parse_flag_value(args, "--crops-json") {
+        let raw = std::fs::read_to_string(&manifest_path)?;
+        let crops: Vec<CropSpec> = serde_json::from_str(&raw)?;
+        SliceMode::ExplicitCrops(crops)
+    } else if let Some(uid) = parse_flag_value(args, "--id") {
+        let page = parse_flag_value(args, "--page")
+            .unwrap_or_else(|| "1".to_string())
+            .parse::<u32>()
+            .map_err(|_| HydrogenError::Config("invalid --page integer".into()))?;
+        let bbox = if let Some(norm_str) = parse_flag_value(args, "--bbox") {
+            CropBox::Normalized(parse_norm_bbox(&norm_str)?)
+        } else if let Some(px_str) = parse_flag_value(args, "--bbox-px") {
+            CropBox::Pixels(parse_pixel_bbox(&px_str)?)
+        } else {
+            return Err(HydrogenError::Config(
+                "--id requires either `--bbox x,y,w,h` (normalized 0..1) or `--bbox-px x,y,w,h`"
+                    .into(),
+            ));
+        };
+        SliceMode::ExplicitCrops(vec![CropSpec {
+            universal_id: uid,
+            page,
+            bbox,
+        }])
+    } else {
+        let min_gap_px = parse_flag_value(args, "--min-gap")
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(32);
+        let start_question_no = parse_flag_value(args, "--start-seq")
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(1);
+        SliceMode::AutoWhitespaceBands {
+            min_gap_px,
+            min_band_height_px: 48,
+            pad_px: 14,
+            start_question_no,
+        }
+    };
+
+    let t0 = Instant::now();
+    let summary = slice_paper(
+        &cfg,
+        &SlicePaperRequest {
+            source_path: PathBuf::from(src_arg),
+            product,
+            subject,
+            paper_id,
+            dpi,
+            page_range,
+            mode,
+            move_source_to_archive: move_inbox,
+        },
+    )?;
+    let elapsed_ms = t0.elapsed().as_millis();
+
+    println!(
+        "Sliced paper {} in {elapsed_ms} ms ({} total PDF pages, {} rendered pages, {} crops):",
+        summary.paper_id,
+        summary.total_pdf_pages,
+        summary.rendered_pages.len(),
+        summary.sliced_items.len()
+    );
+    println!("  archived_source : {}", summary.archived_source_path.display());
+    println!("  private_xref    : {}", summary.xref_path.display());
+    for item in &summary.sliced_items {
+        println!(
+            "  crop            : {} -> page {} ({}x{} px) @ {}",
+            item.universal_id, item.page, item.width_px, item.height_px, item.crop_path
+        );
+    }
+    Ok(())
+}
+
+fn parse_page_range(spec: &str) -> Result<(u32, u32)> {
+    if let Some((a, b)) = spec.split_once('-') {
+        let start = a
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| HydrogenError::Config(format!("invalid start page in '{spec}'")))?;
+        let end = b
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| HydrogenError::Config(format!("invalid end page in '{spec}'")))?;
+        if start == 0 || end < start {
+            return Err(HydrogenError::Config(format!(
+                "invalid page range '{spec}' (pages are 1-based and end >= start)"
+            )));
+        }
+        Ok((start, end))
+    } else {
+        let p = spec
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| HydrogenError::Config(format!("invalid page number '{spec}'")))?;
+        if p == 0 {
+            return Err(HydrogenError::Config("page numbers are 1-based".into()));
+        }
+        Ok((p, p))
+    }
+}
+
+fn parse_norm_bbox(s: &str) -> Result<NormalizedBBox> {
+    let vals: Vec<f32> = s
+        .split(',')
+        .map(|part| {
+            part.trim()
+                .parse::<f32>()
+                .map_err(|_| HydrogenError::Config(format!("invalid float in --bbox '{s}'")))
+        })
+        .collect::<Result<Vec<f32>>>()?;
+    if vals.len() != 4 {
+        return Err(HydrogenError::Config(format!(
+            "expected 4 comma-separated floats `x,y,w,h` in --bbox, got '{s}'"
+        )));
+    }
+    Ok(NormalizedBBox {
+        x: vals[0],
+        y: vals[1],
+        w: vals[2],
+        h: vals[3],
+    })
+}
+
+fn parse_pixel_bbox(s: &str) -> Result<PixelBBox> {
+    let vals: Vec<u32> = s
+        .split(',')
+        .map(|part| {
+            part.trim()
+                .parse::<u32>()
+                .map_err(|_| HydrogenError::Config(format!("invalid integer in --bbox-px '{s}'")))
+        })
+        .collect::<Result<Vec<u32>>>()?;
+    if vals.len() != 4 {
+        return Err(HydrogenError::Config(format!(
+            "expected 4 comma-separated integers `x,y,w,h` in --bbox-px, got '{s}'"
+        )));
+    }
+    Ok(PixelBBox {
+        x: vals[0],
+        y: vals[1],
+        w: vals[2],
+        h: vals[3],
+    })
+}
+
+fn cmd_theta(args: &[String]) -> Result<()> {
+    if args.is_empty() {
+        return Err(HydrogenError::Config(
+            "usage: hydrogen theta <tool> '<json>' | hydrogen theta \"<expression>\"".into(),
+        ));
+    }
+
+    let cfg = HydrogenConfig::load(workspace_root()?).ok();
+    let stage = if let Some(ref c) = cfg {
+        let product =
+            parse_flag_value(args, "--product").unwrap_or_else(|| c.default_product.clone());
+        let subject =
+            parse_flag_value(args, "--subject").unwrap_or_else(|| c.default_subject.clone());
+        RuleLoader::new(&c.rules_dir)
+            .load(&product, &subject, None)
+            .map(|r| r.frontmatter.theta.to_stage_preset())
+            .unwrap_or_else(|_| StagePresetConfig::gyara_11plus_maths())
+    } else {
+        StagePresetConfig::gyara_11plus_maths()
+    };
+
+    let theta = ThetaService::new(stage);
+    let first = args[0].as_str();
+
+    if matches!(
+        first,
+        "calc.eval"
+            | "calc.solve"
+            | "calc.formula"
+            | "calc.transform"
+            | "calc.stats"
+            | "calc.analyze_graph"
+    ) {
+        let json_str = args.get(1).ok_or_else(|| {
+            HydrogenError::Config(format!("usage: hydrogen theta {first} '<json-args>'"))
+        })?;
+        let mut req_val: Value = serde_json::from_str(json_str)?;
+        if let Some(obj) = req_val.as_object_mut() {
+            let st = theta.stage();
+            obj.entry("preset".to_string())
+                .or_insert_with(|| Value::String(st.preset.clone()));
+            if matches!(first, "calc.eval" | "calc.solve") {
+                obj.entry("angle_mode".to_string())
+                    .or_insert_with(|| Value::String(st.angle_mode.clone()));
+                obj.entry("anchor_tokens".to_string())
+                    .or_insert_with(|| Value::Bool(st.anchor_tokens));
+            }
+            if first == "calc.eval" {
+                obj.entry("allow_mixed_fractions".to_string())
+                    .or_insert_with(|| Value::Bool(st.allow_mixed_fractions));
+            }
+        }
+        let t0 = Instant::now();
+        let out = theta.dispatch_tool(first, &req_val)?;
+        let elapsed_us = t0.elapsed().as_micros();
+        eprintln!("// {first} completed in {elapsed_us} us");
+        println!("{}", serde_json::to_string_pretty(&out)?);
+        return Ok(());
+    }
+
+    let expr = args.join(" ");
+    let t0 = Instant::now();
+    let res = theta.eval_expr(&expr)?;
+    let elapsed_us = t0.elapsed().as_micros();
+    println!("expr   : {expr}");
+    println!("exact  : {} ({elapsed_us} us)", res.exact);
+    println!("katex  : {}", res.katex);
+    if let Some(approx) = res.approx {
+        println!("approx : {approx:?}");
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BareBlueprintsFile {
+    question: QuestionBlueprint,
+    solution: SolutionBlueprint,
+}
+
+fn cmd_verify_question(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = ["--product", "--subject", "--tier"];
+    let file_arg = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config("usage: hydrogen verify-question <file.json> [options]".into())
+    })?;
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let tier = parse_flag_value(args, "--tier");
+    let emit_json = has_flag(args, "--json");
+
+    let rulebook = RuleLoader::new(&cfg.rules_dir).load(&product, &subject, tier.as_deref())?;
+    let raw = std::fs::read_to_string(file_arg)?;
+    let val: Value = serde_json::from_str(&raw)?;
+
+    let t0 = Instant::now();
+    let report = if val.get("title").is_some() {
+        let pkg: QuestionPackage = serde_json::from_value(val)?;
+        verify_question_package(&pkg, Some(&rulebook))
+    } else {
+        let bare: BareBlueprintsFile = serde_json::from_value(val)?;
+        verify_blueprints(&bare.question, &bare.solution, Some(&rulebook))
+    };
+    let elapsed_us = t0.elapsed().as_micros();
+
+    if emit_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else if report.ok {
+        println!(
+            "VERIFIED OK : {} ({} Theta checks · {} Carbon commands · {elapsed_us} us)",
+            report.question_id, report.theta_checks_run, report.carbon_commands_checked
+        );
+    }
+
+    let _ = report.into_result()?;
+    Ok(())
+}
+
+async fn ensure_parent_paper_exists(
+    vault: &VaultManager,
+    paper_id: &str,
+    default_answer_format: &str,
+    calculator_mode: &str,
+) -> Result<()> {
+    if vault.get_paper(paper_id).await?.is_some() {
+        return Ok(());
+    }
+    let parsed = UniversalId::parse(paper_id)?;
+    let (paper_no, rep_opt) = match parsed.container {
+        Some(ContainerSegment::Paper { number, replica }) => (number, replica),
+        _ => {
+            return Err(HydrogenError::Validation(format!(
+                "invalid paperId '{paper_id}'"
+            )));
+        }
+    };
+    let (code, title, is_replica) = match rep_opt {
+        Some(r) => (
+            format!("P{paper_no:03}_R{r:02}"),
+            format!("Practice Paper {paper_no:02}-ai ({r:02})"),
+            true,
+        ),
+        None => (
+            format!("P{paper_no:03}"),
+            format!("Practice Paper {paper_no:02}"),
+            false,
+        ),
+    };
+    let input = CoursePaperInput {
+        paper_id: paper_id.to_string(),
+        code,
+        title,
+        badge: None,
+        duration_sec: Some(3000),
+        calculator_mode: calculator_mode.to_string(),
+        default_answer_format: default_answer_format.to_string(),
+        tier: None,
+        total_marks: None,
+        is_replica,
+        parent_paper_id: None,
+        sort_order: i64::from(paper_no) * 10,
+        meta_json: json!({}),
+    };
+    vault.upsert_paper(&input).await
+}
+
+async fn cmd_upsert_question(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = ["--product", "--subject", "--tier"];
+    let file_arg = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config("usage: hydrogen upsert-question <file.json> [options]".into())
+    })?;
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let tier = parse_flag_value(args, "--tier");
+    let should_pack = has_flag(args, "--pack");
+
+    let rulebook = RuleLoader::new(&cfg.rules_dir).load(&product, &subject, tier.as_deref())?;
+    let raw = std::fs::read_to_string(file_arg)?;
+    let pkg: QuestionPackage = serde_json::from_str(&raw)?;
+
+    // Enforce deterministic quality gate BEFORE touching the encrypted vault
+    let gate_report = verify_question_package(&pkg, Some(&rulebook)).into_result()?;
+    let l7_input = pkg.to_course_question_input()?;
+
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
+    if product == "gyaraplus" && subject == "maths" {
+        let _ = vault
+            .seed_gyara_maths(&cfg.product_assets_dir(&product))
+            .await?;
+    }
+    if let Some(pid) = l7_input.paper_id.as_deref() {
+        ensure_parent_paper_exists(
+            &vault,
+            pid,
+            &rulebook.frontmatter.defaults.answer_format,
+            &l7_input.calculator_mode,
+        )
+        .await?;
+    }
+
+    vault.upsert_question(&l7_input).await?;
+    println!(
+        "Upserted verified question {} ({} · {} marks · sublevels {}..={} · {} Theta checks) -> {}",
+        l7_input.question_id,
+        l7_input.title,
+        l7_input.marks,
+        l7_input.min_sublevel,
+        l7_input.max_sublevel,
+        gate_report.theta_checks_run,
+        vault.sqlite_path().display()
+    );
+
+    if should_pack {
+        let manifest = vault.pack_to_default_bundle().await?;
+        println!(
+            "Packed bundle: {} (schema v{})",
+            vault.bundle_path().display(),
+            manifest.schema_version
+        );
+    }
+    Ok(())
+}
+
+async fn cmd_upsert_paper(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = ["--product", "--subject", "--tier"];
+    let file_arg = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config("usage: hydrogen upsert-paper <file.json> [options]".into())
+    })?;
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let tier = parse_flag_value(args, "--tier");
+    let should_pack = has_flag(args, "--pack");
+
+    let rulebook = RuleLoader::new(&cfg.rules_dir).load(&product, &subject, tier.as_deref())?;
+    let raw = std::fs::read_to_string(file_arg)?;
+    let paper_pkg: PaperPackage = serde_json::from_str(&raw)?;
+
+    // Validate paper ID & clean-room title, plus every included question BEFORE writing
+    let parsed_pid = UniversalId::parse(&paper_pkg.paper.paper_id)?;
+    if !matches!(parsed_pid.container, Some(ContainerSegment::Paper { .. }))
+        || parsed_pid.item.is_some()
+    {
+        return Err(HydrogenError::Validation(format!(
+            "invalid paperId '{}'",
+            paper_pkg.paper.paper_id
+        )));
+    }
+    if paper_pkg.paper.title.to_ascii_lowercase().contains(".pdf") {
+        return Err(HydrogenError::Validation(
+            "clean-room violation: paper.title must not contain raw PDF filenames".into(),
+        ));
+    }
+
+    let mut verified_inputs = Vec::with_capacity(paper_pkg.questions.len());
+    for q_pkg in &paper_pkg.questions {
+        let _ = verify_question_package(q_pkg, Some(&rulebook)).into_result()?;
+        verified_inputs.push(q_pkg.to_course_question_input()?);
+    }
+
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
+    if product == "gyaraplus" && subject == "maths" {
+        let _ = vault
+            .seed_gyara_maths(&cfg.product_assets_dir(&product))
+            .await?;
+    }
+
+    vault
+        .upsert_paper(&CoursePaperInput::from(&paper_pkg.paper))
+        .await?;
+    for sec in &paper_pkg.sections {
+        vault
+            .upsert_paper_section(&CoursePaperSectionInput::from(sec))
+            .await?;
+    }
+    for stim in &paper_pkg.stimuli {
+        vault
+            .upsert_stimulus(&CourseStimulusInput::from(stim))
+            .await?;
+    }
+    for q_in in &verified_inputs {
+        vault.upsert_question(q_in).await?;
+    }
+
+    println!(
+        "Upserted paper {} ('{}'): {} sections, {} stimuli, {} verified questions -> {}",
+        paper_pkg.paper.paper_id,
+        paper_pkg.paper.title,
+        paper_pkg.sections.len(),
+        paper_pkg.stimuli.len(),
+        verified_inputs.len(),
+        vault.sqlite_path().display()
+    );
+
+    if should_pack {
+        let manifest = vault.pack_to_default_bundle().await?;
+        println!(
+            "Packed bundle: {} (schema v{})",
+            vault.bundle_path().display(),
+            manifest.schema_version
+        );
+    }
+    Ok(())
+}
+
 async fn cmd_catalog(args: &[String]) -> Result<()> {
     let cfg = HydrogenConfig::load(workspace_root()?)?;
-    let product = parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
-    let subject = parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
     let carbon_json = has_flag(args, "--carbon-json");
 
-    let vault = VaultManager::open_or_create(
-        cfg.vault_sqlite_path(&product, &subject),
-        cfg.vault_bundle_path(&product, &subject),
-        &cfg.lesson_key,
-        &cfg.device_id,
-    )?;
-
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
     let snap = vault.catalog_snapshot().await?;
+
     if carbon_json {
         let logo_uri = vault.read_asset_data_uri(GYR_LOGO_BLUE_ID).await.ok();
         let mut catalog = project_full_stage_catalog(&snap, logo_uri);
-        // Truncate massive base64 string unless `--full-logo` is passed so terminal stays readable
         if !has_flag(args, "--full-logo") {
             if let Some(ref mut logo) = catalog.brand_logo
                 && logo.len() > 64
@@ -292,23 +860,127 @@ async fn cmd_catalog(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn cmd_theta(args: &[String]) -> Result<()> {
-    if args.is_empty() {
-        return Err(HydrogenError::Config(
-            "usage: hydrogen theta \"<expression>\"".into(),
-        ));
+async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = [
+        "--part", "--step", "--level", "--substep", "--carbon", "--product", "--subject",
+    ];
+    let qid = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config(
+            "usage: hydrogen preview-carbon <question-id> [--step S01 --level 9]".into(),
+        )
+    })?;
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let part_id = parse_flag_value(args, "--part");
+    let step_id = parse_flag_value(args, "--step");
+    let level = match parse_flag_value(args, "--level") {
+        Some(s) => s
+            .parse::<u8>()
+            .map_err(|_| HydrogenError::Config(format!("invalid --level '{s}'")))?,
+        None => 9,
+    };
+    let substep = match parse_flag_value(args, "--substep") {
+        Some(s) => Some(
+            s.parse::<u32>()
+                .map_err(|_| HydrogenError::Config(format!("invalid --substep '{s}'")))?,
+        ),
+        None => None,
+    };
+    let reveal_answer = has_flag(args, "--reveal-answer");
+    let use_loopback = has_flag(args, "--loopback");
+    let explicit_carbon = parse_flag_value(args, "--carbon");
+
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
+    let cq = vault.get_question(qid).await?.ok_or_else(|| {
+        HydrogenError::Validation(format!(
+            "question '{qid}' not found in {}",
+            vault.sqlite_path().display()
+        ))
+    })?;
+
+    let built = build_question_preview_batch(
+        &cq,
+        &PreviewSelection {
+            part_id,
+            step_id,
+            level,
+            substep,
+            reveal_answer,
+        },
+    )?;
+
+    let (target_url, mock_handle) = if use_loopback {
+        let (url, h) = spawn_demo_loopback_carbon().await?;
+        (url, Some(h))
+    } else {
+        let url = explicit_carbon.unwrap_or_else(|| cfg.carbon_ws_url.clone());
+        (url, None)
+    };
+
+    let client = CarbonClient::connect(&target_url, &cfg.device_id, Duration::from_secs(3)).await?;
+    let ack = client.send_batch(built.commands.clone()).await?;
+    let state = client.get_state(false).await?;
+
+    println!(
+        "Previewed {} (part='{}', step='{}' [{}/{}], level={}, archetype='{}') on {}:",
+        built.question_id,
+        built.part_id,
+        built.step_id,
+        built.step_index + 1,
+        built.total_steps,
+        built.level,
+        built.archetype,
+        client.ws_url()
+    );
+    println!(
+        "  batch_ack  : ok={} ({} commands dispatched)",
+        ack.ok,
+        built.commands.len()
+    );
+    println!(
+        "  board_mode : layout={:?}, theme={:?}, authorMode={}",
+        state.layout.mode, state.theme, state.chrome.author_mode
+    );
+    println!("  narration  : {}", built.narration);
+
+    if let Some(h) = mock_handle {
+        h.abort();
     }
-    let expr = args.join(" ");
-    let theta = ThetaService::new(StagePresetConfig::gyara_11plus_maths());
-    let t0 = Instant::now();
-    let res = theta.eval_expr(&expr)?;
-    let elapsed_us = t0.elapsed().as_micros();
-    println!("expr   : {expr}");
-    println!("exact  : {} ({elapsed_us} us)", res.exact);
-    println!("katex  : {}", res.katex);
-    if let Some(approx) = res.approx {
-        println!("approx : {approx:?}");
+    Ok(())
+}
+
+async fn cmd_pack(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
+    let manifest = vault.pack_to_default_bundle().await?;
+    println!(
+        "Packed L7 vault bundle: {} (format v{}, schema v{}, dek_id={})",
+        vault.bundle_path().display(),
+        manifest.format_version,
+        manifest.schema_version,
+        manifest.dek_id
+    );
+
+    if let Some(clean_out) = parse_flag_value(args, "--clean-out") {
+        let customer_key = parse_flag_value(args, "--customer-key")
+            .unwrap_or_else(|| cfg.lesson_key.clone());
+        let out_path = PathBuf::from(clean_out);
+        vault.export_clean_bundle(&out_path, &customer_key).await?;
+        println!(
+            "Exported clean customer bundle (comments/revisions stripped): {}",
+            out_path.display()
+        );
     }
+
     Ok(())
 }
 
@@ -317,10 +989,9 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
     let external_carbon = parse_flag_value(args, "--carbon");
 
     println!("==================================================================");
-    println!("  HYDROGEN PHASE 1 END-TO-END DEMO (Vault + Theta + Carbon v0.1)  ");
+    println!("  HYDROGEN END-TO-END DEMO (Vault + Theta + Carbon Protocol v0.1) ");
     println!("==================================================================\n");
 
-    // Step 1: Initialize & Pack `gyara-maths.raphs`
     let sqlite_path = cfg.vault_sqlite_path("gyaraplus", "maths");
     let bundle_path = cfg.vault_bundle_path("gyaraplus", "maths");
     let assets_dir = cfg.product_assets_dir("gyaraplus");
@@ -355,7 +1026,6 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         seeded.topic_count, seeded.question_type_count
     );
 
-    // Step 2: Solve & Verify a Sample 11+ Algebraic Word Problem via In-Process `Theta`
     let theta = ThetaService::new(StagePresetConfig::gyara_11plus_maths());
     let t0 = Instant::now();
     let solved = theta.solve_equations(&["a + b = 52", "a - b = 14"], &["a", "b"], true)?;
@@ -364,14 +1034,8 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         .as_ref()
         .and_then(|v| v.first())
         .ok_or_else(|| HydrogenError::Theta("expected unique simultaneous solution".into()))?;
-    let val_a = sol_map
-        .get("a")
-        .map(|t| t.exact.as_str())
-        .unwrap_or("?");
-    let val_b = sol_map
-        .get("b")
-        .map(|t| t.exact.as_str())
-        .unwrap_or("?");
+    let val_a = sol_map.get("a").map(|t| t.exact.as_str()).unwrap_or("?");
+    let val_b = sol_map.get("b").map(|t| t.exact.as_str()).unwrap_or("?");
     let check_a = theta.eval_expr("(52 + 14) / 2")?;
     let valid_choice = theta.verify_mcq_options(&["19", "26", "33", "38", "66"], val_a)?;
     let theta_us = t0.elapsed().as_micros();
@@ -387,7 +1051,6 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         (b'A' + valid_choice as u8) as char
     );
 
-    // Step 3: Connect to Carbon (live URL if supplied/open, else spin up local loopback stage)
     let (target_url, mock_handle) = if let Some(url) = external_carbon {
         (url, None)
     } else {
@@ -403,7 +1066,10 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         .await?;
     let state = client.get_state(false).await?;
 
-    println!("[Step 3/3] Live `Carbon Protocol v{}` Handshake & Full-Stage Gallery Push:", PROTOCOL_VERSION);
+    println!(
+        "[Step 3/3] Live `Carbon Protocol v{}` Handshake & Full-Stage Gallery Push:",
+        PROTOCOL_VERSION
+    );
     println!(
         "  - Connected        : {} (GPU={}, viewport={}x{}, pong={pong_ts})",
         client.ws_url(),
@@ -440,7 +1106,7 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         h.abort();
     }
 
-    println!("\n=== Phase 1 End-to-End Demo Succeeded ===");
+    println!("\n=== End-to-End Demo Succeeded ===");
     Ok(())
 }
 
@@ -474,6 +1140,7 @@ async fn spawn_demo_loopback_carbon() -> Result<(String, tokio::task::JoinHandle
 
         let mut cat_summary: Option<CatalogSnapshotSummary> = None;
         let mut author_mode = false;
+        let mut active_item_id: Option<String> = None;
 
         while let Some(Ok(Message::Text(txt))) = ws.next().await {
             let Ok(msg) = decode_client_message(txt.as_str()) else {
@@ -490,11 +1157,16 @@ async fn spawn_demo_loopback_carbon() -> Result<(String, tokio::task::JoinHandle
                     }
                 }
                 ClientMessage::Batch { id, commands, .. } => {
+                    let mut action_ids = Vec::with_capacity(commands.len());
                     for cmd in &commands {
+                        action_ids.push(cmd.op_name().to_string());
                         match cmd {
                             CarbonCommand::ChromeUpdate(p) => {
                                 if let Some(am) = p.author_mode {
                                     author_mode = am;
+                                }
+                                if let Some(ref iid) = p.active_item_id {
+                                    active_item_id = Some(iid.clone());
                                 }
                             }
                             CarbonCommand::SetCatalog(c) => {
@@ -518,7 +1190,7 @@ async fn spawn_demo_loopback_carbon() -> Result<(String, tokio::task::JoinHandle
                     let ack = ServerMessage::Ack(CommandAck {
                         request_id: id,
                         ok: true,
-                        action_ids: vec!["chrome.update".into(), "chrome.setCatalog".into()],
+                        action_ids,
                         error: None,
                     });
                     if let Ok(raw) = encode_server_message(&ack) {
@@ -531,10 +1203,10 @@ async fn spawn_demo_loopback_carbon() -> Result<(String, tokio::task::JoinHandle
                         actor: None,
                         event: CarbonEvent::CatalogItemSelected {
                             kind: CatalogSelectionKind::Topic,
-                            item_id: "GYR-MTH-T-ALG".to_string(),
+                            item_id: "GYR-MTH-T_ALG".to_string(),
                             subject_id: Some("GYR-MTH".to_string()),
                             paper_id: None,
-                            topic_id: Some("GYR-MTH-T-ALG".to_string()),
+                            topic_id: Some("GYR-MTH-T_ALG".to_string()),
                         },
                     });
                     if let Ok(raw) = encode_server_message(&ev) {
@@ -587,7 +1259,7 @@ async fn spawn_demo_loopback_carbon() -> Result<(String, tokio::task::JoinHandle
                         chrome: ChromeSnapshot {
                             mode: ChromeVisibility::Full,
                             title: "Gyara+ 11+ Maths".to_string(),
-                            active_item_id: None,
+                            active_item_id: active_item_id.clone(),
                             paper_badge: None,
                             item_label: None,
                             marks_chip: None,

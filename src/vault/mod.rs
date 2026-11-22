@@ -8,7 +8,9 @@ pub mod seed;
 use std::path::{Path, PathBuf};
 
 use memory_core_rs::{
-    CheckReport, CourseAsset, CourseCatalogSnapshot, Manifest, Memory, Status, bundle,
+    CheckReport, CourseAsset, CourseAssetInput, CourseCatalogSnapshot, CoursePaper,
+    CoursePaperInput, CoursePaperSectionInput, CourseQuestion, CourseQuestionInput,
+    CourseStimulusInput, Manifest, Memory, Status, bundle,
 };
 use tokio::sync::Mutex;
 
@@ -110,6 +112,59 @@ impl VaultManager {
             .await
     }
 
+    /// Upsert an `L7` practice/mock paper header (`course_papers`).
+    pub async fn upsert_paper(&self, input: &CoursePaperInput) -> Result<()> {
+        self.with_memory(|mem| {
+            mem.upsert_paper(HYDROGEN_ACTOR, None, input)?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Fetch a single `L7` paper by its `paper_id`.
+    pub async fn get_paper(&self, paper_id: &str) -> Result<Option<CoursePaper>> {
+        self.with_memory(|mem| Ok(mem.get_paper(paper_id)?)).await
+    }
+
+    /// Upsert a timed sub-section within a paper (`course_paper_sections`).
+    pub async fn upsert_paper_section(&self, input: &CoursePaperSectionInput) -> Result<()> {
+        self.with_memory(|mem| {
+            mem.upsert_paper_section(HYDROGEN_ACTOR, None, input)?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Upsert a shared stimulus (`course_stimuli`, e.g., passage, dataset, or code key).
+    pub async fn upsert_stimulus(&self, input: &CourseStimulusInput) -> Result<()> {
+        self.with_memory(|mem| {
+            mem.upsert_stimulus(HYDROGEN_ACTOR, None, input)?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Upsert a verified question + `Level 9 -> 1` solution (`course_questions` + topic/concept/asset links).
+    pub async fn upsert_question(&self, input: &CourseQuestionInput) -> Result<()> {
+        self.with_memory(|mem| {
+            mem.upsert_question(HYDROGEN_ACTOR, None, input, None)?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Fetch a full `CourseQuestion` (including `question_json`, `solution_json`, topics, links, and assets).
+    pub async fn get_question(&self, question_id: &str) -> Result<Option<CourseQuestion>> {
+        self.with_memory(|mem| Ok(mem.get_question(question_id)?))
+            .await
+    }
+
+    /// Embed a clean regenerated course media asset into content-addressed `blobs` + `course_media_assets`.
+    pub async fn put_asset(&self, meta: &CourseAssetInput, bytes: &[u8]) -> Result<String> {
+        self.with_memory(|mem| Ok(mem.put_course_asset(HYDROGEN_ACTOR, None, meta, bytes)?))
+            .await
+    }
+
     /// Read metadata for an embedded `L7` media asset (e.g. `GYR-LOGO-WHITE`).
     pub async fn get_asset_info(&self, asset_id: &str) -> Result<Option<CourseAsset>> {
         self.with_memory(|mem| Ok(mem.get_course_asset_info(asset_id)?))
@@ -187,8 +242,8 @@ mod tests {
 
         let seeded = vault.seed_gyara_maths(&assets_dir).await?;
         assert_eq!(seeded.course_id, "GYR-MTH");
-        assert!(seeded.topic_count >= 7);
-        assert!(seeded.question_type_count >= 9);
+        assert_eq!(seeded.topic_count, 8);
+        assert_eq!(seeded.question_type_count, 10);
         assert!(seeded.embedded_assets.contains(&GYR_LOGO_WHITE_ID.to_string()));
         assert!(seeded.embedded_assets.contains(&GYR_LOGO_BLUE_ID.to_string()));
 
@@ -207,8 +262,10 @@ mod tests {
             snap.meta.as_ref().map(|m| m.course_id.as_str()),
             Some("GYR-MTH")
         );
-        assert_eq!(snap.topics.len(), 7);
-        assert_eq!(snap.question_types.len(), 9);
+        assert_eq!(snap.topics.len(), 8);
+        assert!(snap.topics.iter().any(|t| t.topic_id == "GYR-MTH-T_ALG"));
+        assert!(snap.topics.iter().any(|t| t.topic_id == "GYR-MTH-T_LOG"));
+        assert_eq!(snap.question_types.len(), 10);
 
         let manifest = vault.pack_to_default_bundle().await?;
         assert_eq!(manifest.schema_version, "2.3.0");

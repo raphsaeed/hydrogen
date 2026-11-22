@@ -3,8 +3,12 @@
 
 pub mod base64_util;
 pub mod carbon;
+pub mod compiler;
 pub mod config;
+pub mod domain;
 pub mod error;
+pub mod ingest;
+pub mod rules;
 pub mod theta;
 pub mod vault;
 

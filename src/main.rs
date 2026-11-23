@@ -16,7 +16,9 @@ use carbon_protocol::{
 use futures_util::{SinkExt, StreamExt};
 use hydrogen::carbon::CarbonClient;
 use hydrogen::carbon::catalog::project_full_stage_catalog;
-use hydrogen::carbon::preview::{PreviewSelection, build_question_preview_batch};
+use hydrogen::carbon::preview::{
+    PreviewSelection, apply_interactive_event, build_question_preview_batch,
+};
 use hydrogen::compiler::{verify_blueprints, verify_question_package};
 use hydrogen::config::HydrogenConfig;
 use hydrogen::domain::{
@@ -104,12 +106,12 @@ SUBCOMMANDS:
         Options: [--product P] [--subject S] [--tier T] [--pack]
     catalog [--product P] [--subject S] [--carbon-json] [--full-logo]
                                             Inspect L7 CourseCatalogSnapshot or emit Carbon Full-Stage JSON
-    preview-carbon <question-id> [OPTIONS]  Push Split-Board question + (part, step, sublevel) live to Carbon
-        Options: [--part PART] [--step S01] [--level 9] [--substep 0] [--reveal-answer]
-                 [--carbon <ws-url>] [--loopback] [--product P] [--subject S]
+    preview-carbon [<question-id>] [OPTIONS] Push Split-Board question + (part, step, sublevel) live to Carbon
+        Options: [--watch] [--catalog] [--part PART] [--step S01] [--level 9] [--substep 0]
+                 [--reveal-answer] [--carbon <ws-url>] [--loopback] [--product P] [--subject S]
     pack [--product P] [--subject S] [--clean-out <out.raphs> --customer-key <key>]
                                             Pack live SQLCipher container into <stem>.raphs (or clean customer export)
-    demo [--carbon <ws-url>]                Run interactive end-to-end demo (Vault + Theta + Carbon WS)
+    demo [--carbon <ws-url>] [--watch]      Run interactive end-to-end demo (Vault + Theta + Carbon WS)
     version                                 Print version",
         hydrogen::VERSION
     );
@@ -865,11 +867,15 @@ async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
     let valued_flags = [
         "--part", "--step", "--level", "--substep", "--carbon", "--product", "--subject",
     ];
-    let qid = first_positional(args, &valued_flags).ok_or_else(|| {
-        HydrogenError::Config(
-            "usage: hydrogen preview-carbon <question-id> [--step S01 --level 9]".into(),
-        )
-    })?;
+    let explicit_qid = first_positional(args, &valued_flags).map(str::to_string);
+    let watch = has_flag(args, "--watch");
+    let open_catalog_first = has_flag(args, "--catalog") || explicit_qid.is_none();
+
+    if explicit_qid.is_none() && !has_flag(args, "--catalog") {
+        return Err(HydrogenError::Config(
+            "usage: hydrogen preview-carbon <question-id> [--watch] [--step S01 --level 9] (or `--catalog --watch`)".into(),
+        ));
+    }
 
     let product =
         parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
@@ -895,23 +901,30 @@ async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
     let explicit_carbon = parse_flag_value(args, "--carbon");
 
     let vault = open_vault_for(&cfg, &product, &subject).await?;
-    let cq = vault.get_question(qid).await?.ok_or_else(|| {
-        HydrogenError::Validation(format!(
-            "question '{qid}' not found in {}",
-            vault.sqlite_path().display()
-        ))
-    })?;
+    let snap = vault.catalog_snapshot().await?;
+    let logo_uri = vault.read_asset_data_uri(GYR_LOGO_BLUE_ID).await.ok();
 
-    let built = build_question_preview_batch(
-        &cq,
-        &PreviewSelection {
-            part_id,
-            step_id,
-            level,
-            substep,
-            reveal_answer,
-        },
-    )?;
+    let mut current_qid = match explicit_qid {
+        Some(q) => q,
+        None => snap
+            .questions
+            .first()
+            .map(|q| q.question_id.clone())
+            .ok_or_else(|| {
+                HydrogenError::Validation(format!(
+                    "no compiled questions found in {}",
+                    vault.sqlite_path().display()
+                ))
+            })?,
+    };
+
+    let mut sel = PreviewSelection {
+        part_id,
+        step_id,
+        level,
+        substep,
+        reveal_answer,
+    };
 
     let (target_url, mock_handle) = if use_loopback {
         let (url, h) = spawn_demo_loopback_carbon().await?;
@@ -922,34 +935,126 @@ async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
     };
 
     let client = CarbonClient::connect(&target_url, &cfg.device_id, Duration::from_secs(3)).await?;
-    let ack = client.send_batch(built.commands.clone()).await?;
-    let state = client.get_state(false).await?;
 
-    println!(
-        "Previewed {} (part='{}', step='{}' [{}/{}], level={}, archetype='{}') on {}:",
-        built.question_id,
-        built.part_id,
-        built.step_id,
-        built.step_index + 1,
-        built.total_steps,
-        built.level,
-        built.archetype,
-        client.ws_url()
-    );
-    println!(
-        "  batch_ack  : ok={} ({} commands dispatched)",
-        ack.ok,
-        built.commands.len()
-    );
-    println!(
-        "  board_mode : layout={:?}, theme={:?}, authorMode={}",
-        state.layout.mode, state.theme, state.chrome.author_mode
-    );
-    println!("  narration  : {}", built.narration);
+    // Always synchronize Carbon's Full-Stage Course Gallery so the top-left Gallery icon works live
+    let _ = client.push_author_catalog(&snap, logo_uri).await?;
+
+    if !open_catalog_first {
+        let cq = vault.get_question(&current_qid).await?.ok_or_else(|| {
+            HydrogenError::Validation(format!(
+                "question '{current_qid}' not found in {}",
+                vault.sqlite_path().display()
+            ))
+        })?;
+        let built = build_question_preview_batch(&cq, &sel)?;
+        let ack = client.send_batch(built.commands.clone()).await?;
+        let state = client.get_state(false).await?;
+
+        println!(
+            "Previewed {} (part='{}', step='{}' [{}/{}], level={}, archetype='{}') on {}:",
+            built.question_id,
+            built.part_id,
+            built.step_id,
+            built.step_index + 1,
+            built.total_steps,
+            built.level,
+            built.archetype,
+            client.ws_url()
+        );
+        println!(
+            "  batch_ack  : ok={} ({} commands dispatched)",
+            ack.ok,
+            built.commands.len()
+        );
+        println!(
+            "  board_mode : layout={:?}, theme={:?}, authorMode={}",
+            state.layout.mode, state.theme, state.chrome.author_mode
+        );
+        println!("  narration  : {}", built.narration);
+        if !watch && !use_loopback {
+            println!(
+                "  interactive: pass `--watch` to navigate parts, steps, breakdowns, L9..L1 chips, and Gallery live!"
+            );
+        }
+    } else {
+        println!(
+            "Opened Full-Stage Course Gallery ({} papers, {} questions) on {}",
+            snap.papers.len(),
+            snap.questions.len(),
+            client.ws_url()
+        );
+    }
+
+    if watch {
+        run_interactive_watch_loop(&client, &vault, &mut current_qid, &mut sel).await?;
+    }
 
     if let Some(h) = mock_handle {
         h.abort();
     }
+    Ok(())
+}
+
+async fn run_interactive_watch_loop(
+    client: &CarbonClient,
+    vault: &VaultManager,
+    current_qid: &mut String,
+    sel: &mut PreviewSelection,
+) -> Result<()> {
+    let snap = vault.catalog_snapshot().await?;
+    let mut full_questions = Vec::with_capacity(snap.questions.len());
+    for q_card in &snap.questions {
+        if let Some(cq) = vault.get_question(&q_card.question_id).await? {
+            full_questions.push(cq);
+        }
+    }
+
+    let Some(mut rx) = client.take_event_receiver().await else {
+        return Ok(());
+    };
+
+    println!(
+        "\n[Watch] Live interactive session active ({} questions loaded). Click Gallery cards, Part tabs, |◀/◀/▶ Steps, Break step down, L9..L1 chips, Reveal Answer, or ◀/▶ Nav in Carbon (Ctrl+C to stop)...",
+        full_questions.len()
+    );
+
+    while let Some(ev) = rx.recv().await {
+        if let CarbonEvent::PromptAnswered {
+            ref prompt_id,
+            ref value,
+        } = ev.event
+        {
+            println!("[Watch] Prompt answered: {prompt_id} = {value}");
+        }
+
+        if apply_interactive_event(&ev.event, current_qid, sel, &full_questions)
+            && let Some(cq) = full_questions
+                .iter()
+                .find(|q| q.question_id == *current_qid)
+        {
+            match build_question_preview_batch(cq, sel) {
+                Ok(built) => {
+                    let _ = client.send_batch(built.commands).await?;
+                    println!(
+                        "[Watch] -> {} (part='{}', step='{}' [{}/{}], L{} '{}', substep={:?}, answer={})",
+                        built.question_id,
+                        built.part_id,
+                        built.step_id,
+                        built.step_index + 1,
+                        built.total_steps,
+                        built.level,
+                        built.archetype,
+                        sel.substep,
+                        sel.reveal_answer
+                    );
+                }
+                Err(err) => {
+                    eprintln!("[Watch] warning: {err}");
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1092,7 +1197,15 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         );
     }
 
-    if let Some(mut rx) = client.take_event_receiver().await
+    if has_flag(args, "--watch") {
+        let mut current_qid = snap
+            .questions
+            .first()
+            .map(|q| q.question_id.clone())
+            .unwrap_or_else(|| "GYR-MTH-P001-Q001".to_string());
+        let mut sel = PreviewSelection::default();
+        run_interactive_watch_loop(&client, &vault, &mut current_qid, &mut sel).await?;
+    } else if let Some(mut rx) = client.take_event_receiver().await
         && let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await
     {
         println!(

@@ -7,12 +7,14 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use carbon_protocol::{
-    CarbonEvent, CarbonEventEnvelope, ClientMessage, CommandAck, PROTOCOL_VERSION, ServerMessage,
-    decode_client_message, encode_server_message,
+    CarbonEvent, CarbonEventEnvelope, ClientMessage, CommandAck, PROTOCOL_VERSION, PaneId,
+    ServerMessage, StepNavigationKind, decode_client_message, encode_server_message,
 };
 use futures_util::{SinkExt, StreamExt};
 use hydrogen::carbon::CarbonClient;
-use hydrogen::carbon::preview::{PreviewSelection, build_question_preview_batch};
+use hydrogen::carbon::preview::{
+    PreviewSelection, apply_interactive_event, build_question_preview_batch,
+};
 use hydrogen::compiler::verify_question_package;
 use hydrogen::config::HydrogenConfig;
 use hydrogen::domain::{PaperPackage, QuestionPackage};
@@ -165,7 +167,9 @@ fn full_l9_to_l1_paper_package() -> Result<PaperPackage> {
                                                         "id": "q1_s1_sub0",
                                                         "pane": "right",
                                                         "zone": "scratch",
-                                                        "style": "typeset",
+                                                        "style": "casual",
+                                                        "scale": 0.92,
+                                                        "rotationDeg": -1.5,
                                                         "content": "Same $3C$ in both clues $\\implies$ subtract to cancel $3C$ cleanly!",
                                                         "card": { "headerBanner": "11+ SHORTCUT", "fillColor": "#EFF6FF", "borderColor": "#3B82F6", "borderStyle": "solid" }
                                                     }
@@ -198,7 +202,7 @@ fn full_l9_to_l1_paper_package() -> Result<PaperPackage> {
                                                         "id": "s1_l9",
                                                         "pane": "right",
                                                         "zone": "spine",
-                                                        "style": "typeset",
+                                                        "style": "handwritten",
                                                         "content": "$(5A + 3C) - (2A + 3C) = 53 - 29 \\implies \\htmlId{eq_diff}{3A = 24} \\implies \\htmlId{val_a}{A = \\pounds 8}$"
                                                     }
                                                 }
@@ -214,7 +218,7 @@ fn full_l9_to_l1_paper_package() -> Result<PaperPackage> {
                                                         "id": "s1_l8",
                                                         "pane": "right",
                                                         "zone": "spine",
-                                                        "style": "typeset",
+                                                        "style": "handwritten",
                                                         "content": "$5A + 3C = 53$ minus $2A + 3C = 29 \\xrightarrow{-3C} 3A = 24 \\xrightarrow{\\div 3} A = \\pounds 8$"
                                                     }
                                                 }
@@ -230,7 +234,7 @@ fn full_l9_to_l1_paper_package() -> Result<PaperPackage> {
                                                         "id": "s1_l7",
                                                         "pane": "right",
                                                         "zone": "spine",
-                                                        "style": "typeset",
+                                                        "style": "handwritten",
                                                         "content": "$5A + \\htmlId{c_match}{3C} = 53$ and $2A + 3C = 29 \\implies 3A = 24 \\implies A = \\pounds 8$"
                                                     }
                                                 },
@@ -256,7 +260,7 @@ fn full_l9_to_l1_paper_package() -> Result<PaperPackage> {
                                                         "id": "s1_l6",
                                                         "pane": "right",
                                                         "zone": "spine",
-                                                        "style": "typeset",
+                                                        "style": "handwritten",
                                                         "content": "$5A - 2A = 3A$,\\quad $\\pounds 53 - \\pounds 29 = \\pounds 24$,\\quad $\\pounds 24 \\div 3 = \\pounds 8$"
                                                     }
                                                 }
@@ -274,7 +278,7 @@ fn full_l9_to_l1_paper_package() -> Result<PaperPackage> {
                                                         "zone": "spine",
                                                         "style": "typeset",
                                                         "content": "**NEVER EVER** pick $\\pounds 24$ (Option E) — that is $3$ adult tickets! Divide by $3$: $\\pounds 24 \\div 3 = \\pounds 8$.",
-                                                        "card": { "headerBanner": "TRAP OPTION E", "fillColor": "#FFF1F2", "borderColor": "#F87171", "borderStyle": "solid" }
+                                                        "card": { "headerBanner": "TRAP OPTION E", "fillColor": "#FDF2F8", "borderColor": "#9F1239", "borderStyle": "solid" }
                                                     }
                                                 }
                                             ]
@@ -518,6 +522,51 @@ async fn phase2_end_to_end_slice_verify_upsert_preview_and_pack() -> Result<()> 
     });
 
     let client = CarbonClient::connect(&ws_url, "e2e-driver", Duration::from_secs(2)).await?;
+    let mut cur_qid = "GYR-MTH-P001-Q001".to_string();
+    let mut live_sel = PreviewSelection::default();
+    let all_qs = vec![stored_q.clone()];
+
+    assert!(apply_interactive_event(
+        &CarbonEvent::StepActionRequested {
+            action_id: "level-5".into(),
+            target_token_id: None,
+            pane: PaneId::Right,
+        },
+        &mut cur_qid,
+        &mut live_sel,
+        &all_qs,
+    ));
+    assert_eq!(live_sel.level, 5);
+
+    assert!(apply_interactive_event(
+        &CarbonEvent::StepNavigated {
+            action: StepNavigationKind::Breakdown,
+            item_id: None,
+            part_id: None,
+            step_id: None,
+            active_step: 0,
+            total_steps: 1,
+            active_substep: Some(0),
+            handled_locally: false,
+        },
+        &mut cur_qid,
+        &mut live_sel,
+        &all_qs,
+    ));
+    assert_eq!(live_sel.substep, Some(0));
+
+    assert!(apply_interactive_event(
+        &CarbonEvent::AnswerToggled {
+            item_id: None,
+            part_id: None,
+            revealed: true,
+        },
+        &mut cur_qid,
+        &mut live_sel,
+        &all_qs,
+    ));
+    assert!(live_sel.reveal_answer);
+
     for lvl in [9u8, 5, 3, 1] {
         let batch = build_question_preview_batch(
             &stored_q,

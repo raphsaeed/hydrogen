@@ -16,8 +16,14 @@
 - **Age 9–11 (UK Year 5 / Year 6)** preparing for competitive 11+ Grammar School (GL / CEM style) and Independent School entrance/scholarship exams.
 - Voice in `narration` must sound like a **warm, encouraging, sharp 11+ mentor**—clear, lively Year-6 English, never patronizing and never dry university textbook jargon.
 
-1.2 **Concept-First Strategy Opening:**
+1.2 **Concept-First Strategy Opening & Curated 11+ Font Voices:**
 - At the start of Step 1 (`narration` + optional compact strategy header badge on Carbon), name the **11+ Question Archetype / Mental Shortcut** in memorable terms (e.g., *"In an 11+ exam, this is a classic **Algebraic Substitution** puzzle..."*, *"**Closing-the-Gap (Catch-Up)** problem"*, *"**Point-Evidence-Explanation** retrieval"*, *"**SPANS** elimination"*), telling the student *why* this approach beats slow guesswork or exam traps.
+- **Harmonized Font Voices for Year-6 Clarity (Never `"classic-serif"`):**
+  - **`"typewriter"` (`Special Elite`, `sizePt: 14–16`, `rotationDeg: -3.5` or `0°`):** Corner stamps (`EXAMPLE`, `NON-CALC`, `11+ SHORTCUT`) on `#1565C0` blue or `#991B1B` crimson solid badges (`#FFFFFF` text) or `#FFFBEB` clue slips.
+  - **`"typeset"` (`Lato` + `PennstanderMath`, `16.8 pt` base, `0°`):** Question stems (`#0F172A` / `#1F2421`, underlined key clue words bold `#991B1B`) and `"NEVER EVER..."` rule cards (`#FDF2F8` + `#9F1239` border).
+  - **`"handwritten"` (`Pennstander` + `PennstanderMath`, `21.0 pt` base, `0°`):** Worked solution steps on the Right Whiteboard and `E.g.` examples (`scale: 1.05`, `#0284C7` lead).
+  - **`"casual"` (`Single Day` + `PennstanderMath`, `scale: 0.88–0.95`, `rotationDeg: -2.0..+1.5`):** Friendly Year-6 sticky hints, `substeps[]` breakdown cards (`#EFF6FF` + `#3B82F6`), and yellow `RE-CHECK` cards (`#FEF9C3` + dashed `#CA8A04` border).
+  - **`"marker"` (`Patrick Hand` + `PennstanderMath`, `scale: 0.95–1.10`, `rotationDeg: -1.5..+1.5`):** Bold classroom marker headlines & key takeaways (`#1D4ED8`, `#0D9488`, `#15803D`, `#B45309`).
 
 ---
 

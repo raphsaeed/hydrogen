@@ -217,7 +217,7 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
               "id": "ans_final",
               "pane": "right",
               "zone": "spine",
-              "style": "typeset",
+              "style": "handwritten",
               "color": "#15803D",
               "content": "Original price $= \\mathbf{\\pounds 60.00}$ **(Option D)**",
               "card": { "fillColor": "#F0FDF4", "borderColor": "#16A34A", "borderStyle": "solid" }
@@ -247,7 +247,9 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
                     "id": "s1_sub0",
                     "pane": "right",
                     "zone": "scratch",
-                    "style": "typeset",
+                    "style": "casual",
+                    "scale": 0.92,
+                    "rotationDeg": -1.5,
                     "content": "Original $= 100\\%$. Sale takes off $20\\%$, leaving $100\\% - 20\\% = 80\\%$.",
                     "card": { "headerBanner": "WHY 80%?", "fillColor": "#EFF6FF", "borderColor": "#3B82F6", "borderStyle": "solid" }
                   }
@@ -271,7 +273,8 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
                     "id": "s1_l9_eq",
                     "pane": "right",
                     "zone": "spine",
-                    "style": "typeset",
+                    "style": "handwritten",
+                    "color": "#1F2421",
                     "content": "$100\\% - 20\\% = \\htmlId{pct80}{80\\%} \\implies 80\\%\\text{ of Original} = \\htmlId{val48}{\\pounds 48}$"
                   }
                 }
@@ -289,7 +292,7 @@ Inside `memory.raphs` Schema `2.3.0`, `course_questions` stores `question_json` 
                     "zone": "spine",
                     "style": "typeset",
                     "content": "**NEVER EVER** take $20\\%$ of $\\pounds 48$ ($\\pounds 48 + \\pounds 9.60 = \\pounds 57.60$) — wrong whole!\n\n**Truth:** $\\pounds 48$ **is** the remaining $80\\%$ of the Original.",
-                    "card": { "headerBanner": "WATCH OUT FOR OPTION B", "fillColor": "#FFF1F2", "borderColor": "#F87171", "borderStyle": "solid" }
+                    "card": { "headerBanner": "WATCH OUT FOR OPTION B", "fillColor": "#FDF2F8", "borderColor": "#9F1239", "borderStyle": "solid" }
                   }
                 }
               ]

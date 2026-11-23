@@ -17,17 +17,17 @@
 
 ## 2. Exact Definition of All 9 Sub-Levels in 11+ Maths
 
-| Sub-Level | 11+ Maths Role | Carbon Primitives & Macros Used | Board Callouts & `narration` |
+| Sub-Level | 11+ Maths Role | Carbon Primitives, Macros & Curated Font Voice | Board Callouts & `narration` |
 | :---: | :--- | :--- | :--- |
-| **`9`** | **Expected 11+ Exam Working** | Crisp `scene.write` (`align: "equals"`, `\htmlId` key tokens) + required stimulus/solution figure. | Minimal/clean board working; clear concise `narration`. |
-| **`8`** | **Guided 11+ Step + Mental/Check Cue** | Same 11+ algebraic/unitary step + `right-of` inverse tags (`(\div 3)`) + compact 1-line `Check` or mental-math tip badge. | Short `1–6` word operation tags on arrows. |
-| **`7`** | **Token-Pointed Working + Scratchpad** | `focus.annotate` (`auto-margin` `elbow-arrow`) pointing to individual `\htmlId` terms (why `$5(D-18)$` has brackets, why LCM is `6`) + `rough-margin` scratchpad. | Pinpoint token callouts explaining each symbol. |
-| **`6`** | **Zero-Leap Unpacked Balancing / Cancellation** | Multi-substep `flow.timeline` (`substep`), `edit.rub` inline value substitution, `fracCancel` red slashes, or explicit symmetric operations on both sides of `=`. | Short action label per micro-move. |
-| **`5`** | **11+ Trap & MCQ Distractor Contrast (`✗` vs `✓`)** | Side-by-side Red `✗` card (showing the exact mistake behind a tempting `A–E` distractor, e.g., $5D - 18$ forgetting to multiply $18$ by $5$, or $20\%$ of $£48$) vs. Green `✓` truth. | Crisp trap warning callout. |
-| **`4`** | **Visual Chunk Strips / Easy-Numbers Mirror** | `fractionBar` ($10\%$ or unit-fraction strips), `columnCalc` in margin, prime-factor strips, or a side-by-side **"Easy Numbers Mirror"** (e.g., showing $10 - 2 = 8$ alongside $H - 18 = 30$). | Brief chunk labels. |
-| **`3`** | **Spatial Model (`barModel` / `balanceScale` / `functionMachine`)** | Native Carbon spatial macros: **"Parts" `barModel`** (`Tina = 2 boxes, Sarah = 3 boxes`), **`balanceScale`** (for equations), **`functionMachine`** (with reversed inverse arrows), or 3D **`netFold` / `cubeAssembly`**. | Minimal box/scale labels. |
+| **`9`** | **Expected 11+ Exam Working** | Crisp `scene.write` (`"style": "handwritten"`, `21.0 pt`, `0°`, `\htmlId` key tokens) + required stimulus/solution figure. | Minimal/clean board working; clear concise `narration`. |
+| **`8`** | **Guided 11+ Step + Mental/Check Cue** | `"handwritten"` step + `"casual"` tilted `#FEF9C3` dashed `#CA8A04` `RE-CHECK` sticky card (`rotationDeg: -2.0..+1.5`, `scale: 0.90`). | Short `1–6` word operation tags + exact reverse check. |
+| **`7`** | **Token-Pointed Working + Scratchpad** | `focus.annotate` (`elbow-arrow`) pointing to `\htmlId` terms + `"casual"` / `"handwritten"` `scratch` zone candidate pad. | Pinpoint token callouts explaining each symbol. |
+| **`6`** | **Zero-Leap Unpacked Balancing / Cancellation** | Multi-substep `"handwritten"` micro-moves, `edit.rub` inline value substitution, `fracCancel` slashes, or symmetric operations on both sides of `=`. | Short action label per micro-move. |
+| **`5`** | **11+ Trap & MCQ Distractor Contrast (`✗` vs `✓`)** | `"style": "typeset"` `"NEVER EVER..."` Golden-Rule card (`#FDF2F8` fill + `#9F1239` border, or `#FFF1F2` + `#F87171`) contrasting the tempting `A–E` trap vs. `"marker"` / `"handwritten"` `#15803D` truth. | Crisp trap warning callout. |
+| **`4`** | **Visual Chunk Strips / Easy-Numbers Mirror** | `fractionBar` ($10\%$ or unit-fraction strips), `columnCalc` in margin, prime-factor strips, or `"casual"` **"Easy Numbers Mirror"** card. | Brief chunk labels. |
+| **`3`** | **Spatial Model (`barModel` / `balanceScale` / `functionMachine`)** | Native Carbon spatial macros: **"Parts" `barModel`**, **`balanceScale`**, **`functionMachine`** (with reversed inverse arrows), or 3D **`netFold` / `cubeAssembly`** + `"marker"` takeaway headline. | Minimal box/scale labels. |
 | **`2`** | **Number-Line Hop Arcs & Pictorial Grouping** | `numberLine` macro with curved `jumps` (`+12`, `-18`), `tenFrame`, `clock`, or `jug`/`dial` visual scales. | Simple jump & count cues. |
-| **`1`** | **Concrete Real-World Objects (Infant Intuition)** | `counters` macro (colored groups with `crossedOut` items) or clean illustrated objects (sweets, apples, coins, blocks) with count badges (`1, 2, 3...`). | Single-word / number labels; ultra-gentle `narration`. |
+| **`1`** | **Concrete Real-World Objects (Infant Intuition)** | `counters` macro (colored groups with `crossedOut` items) or clean illustrated objects with count badges (`1, 2, 3...`) + gentle `"casual"` note. | Single-word / number labels; ultra-gentle `narration`. |
 
 ---
 

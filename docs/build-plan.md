@@ -88,7 +88,7 @@
   - Implement `QuestionBlueprint` (`question_json`) and `SolutionBlueprint` (`solution_json`: multi-part state, `Steps × Sub-Levels 9..1`, Carbon commands, Theta checks, MCQ trap diagnostics, and SIGMA narration scripts) matching [`solution-levels.md`](./solution-levels.md) §6.
 - [x] **2.2 Deterministic Quality Gate (`src/compiler/gate.rs`):**
   - **Theta Math Gate:** Verify every `thetaVerification` check, multi-part `exportedExact` chain, `Check` equivalence, and 5-option (`A–E`) MCQ uniqueness (all 5 distinct, exactly 1 equal to `answerKey.exactValue`).
-  - **Carbon Command, Warm-Paper Theme & KaTeX Gate ([`carbon-visual-theme.md`](./carbon-visual-theme.md)):** Verify no unescaped ASCII math leaks outside `$...$`, valid canonical Carbon enums (`zone: "spine" | "scratch" | "diagram"`, `style: "typeset"`, `content`), `c1..c8` editorial ink/card tokens (rejecting dark fills or invisible white/yellow ink on `#FDFCF9` paper), diagram stroke widths `<= 2.2 pt`, zero literal `✓`/`✔` inside `"kind": "check"` labels, PNG-only `brandLogo`/`logo`, and valid `targetId` / `\htmlId` ordering.
+  - **Carbon Command, Warm-Paper Theme, 5 Font Voices & KaTeX Gate ([`carbon-visual-theme.md`](./carbon-visual-theme.md)):** Verify no unescaped ASCII math leaks outside `$...$` (`PennstanderMath`), valid canonical Carbon enums (`zone: "spine" | "scratch" | "diagram"`, the 5 curated font voices `handwritten` / `typeset` / `casual` / `marker` / `typewriter` while rejecting `classic-serif`, `content`), `c1..c8` editorial ink/card/stamp tokens (rejecting dark fills or invisible white/yellow ink on `#FDFCF9` paper), diagram stroke widths `<= 2.2 pt`, zero literal `✓`/`✔` inside `"kind": "check"` labels, PNG-only `brandLogo`/`logo`, and valid `targetId` / `\htmlId` ordering.
   - **Pedagogical & Clean-Room Lint:** Enforce contiguous `9 → min_sublevel` numbering, anti-prose-wall word caps on board callouts, non-identical adjacent levels, and zero external paper names/raw scans.
 - [x] **2.3 Clean-Room PDF/Image Slicer & `private-xref.json` (`src/ingest/`):**
   - Render PDF pages to high-DPI working images in `archive/` (never inside `.raphs`), slice individual question/diagram crops, and record `{ universal_id, source_file, page, bbox }` in `private-xref.json`.
@@ -99,7 +99,7 @@
     - `hydrogen theta <tool> <json>`
     - `hydrogen verify-question <file.json>`
     - `hydrogen upsert-question <file.json>` / `hydrogen upsert-paper <file.json>`
-    - `hydrogen catalog` / `hydrogen preview-carbon <question-id> [--step S01 --level 9]`
+    - `hydrogen catalog` / `hydrogen preview-carbon [<question-id>] [--watch] [--catalog] [--step S01 --level 9]`
     - `hydrogen pack`
 
 > **Phase 2 Exit Check:** Using `hydrogen` CLI from Antigravity, we can slice a sample question, verify its `Level 9 → 1` JSON through Theta + Carbon gates, store it in `gyara-maths.raphs`, and preview it on Carbon.

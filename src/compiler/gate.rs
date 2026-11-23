@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use carbon_protocol::{
-    AnchorSpec, AnnotationKind, CarbonCommand, MathRenderStyle, PaneId, PromptKind, ThemeId,
+    AnchorSpec, AnnotationKind, CarbonCommand, MathRenderStyle, PaneId, PromptKind, TextForm,
+    ThemeId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -841,7 +842,7 @@ fn check_carbon_and_katex(
     }
 
     let mut base_table = BoardSymbolTable::default();
-    let mut has_left_stem = false;
+    let mut has_left_typeset_stem = false;
     for (idx, cmd) in question.left_pane_carbon_commands.iter().enumerate() {
         let loc = format!("question.leftPaneCarbonCommands[{idx}]");
         if let CarbonCommand::Write(w) = cmd {
@@ -852,23 +853,18 @@ fn check_carbon_and_katex(
                     format!("leftPaneCarbonCommands scene.write must target `pane: \"left\"`, got {:?}", w.pane),
                 );
             }
-            if w.style != MathRenderStyle::Typeset {
-                report.push(
-                    GateCategory::WarmPaperTheme,
-                    &loc,
-                    "Left-Pane question stem `scene.write` must set `style: \"typeset\"` (`Lato`)",
-                );
+            if w.style == MathRenderStyle::Typeset {
+                has_left_typeset_stem = true;
             }
-            has_left_stem = true;
         }
         validate_carbon_command(cmd, &loc, true, false, &mut base_table, report);
     }
 
-    if !has_left_stem {
+    if !has_left_typeset_stem {
         report.push(
-            GateCategory::CarbonSchema,
+            GateCategory::WarmPaperTheme,
             "question.leftPaneCarbonCommands",
-            "missing Left-Pane `scene.write` stem command",
+            "Left-Pane must include a `style: \"typeset\"` (`Lato` + `PennstanderMath`) question stem `scene.write`",
         );
     }
 
@@ -978,38 +974,89 @@ fn validate_carbon_command(
             }
             validate_anchor_target(&w.anchor, loc, sym, report);
 
-            if is_substep_breakdown && w.style != MathRenderStyle::Typeset {
+            if w.style == MathRenderStyle::ClassicSerif {
                 report.push(
                     GateCategory::WarmPaperTheme,
-                    loc,
-                    "substeps[] breakdown cards must set `style: \"typeset\"` (`Lato`)",
+                    format!("{loc}.style"),
+                    "`classic-serif` is forbidden by default; use one of the 5 curated natural voices (`handwritten`, `typeset`, `casual`, `marker`, `typewriter`) with `PennstanderMath`",
                 );
             }
-            if w.card.is_some() && count_sentences(&w.content) >= 2 && w.style != MathRenderStyle::Typeset {
+            if is_substep_breakdown
+                && !matches!(
+                    w.style,
+                    MathRenderStyle::Casual | MathRenderStyle::Handwritten | MathRenderStyle::Typeset
+                )
+            {
                 report.push(
                     GateCategory::WarmPaperTheme,
-                    loc,
-                    "multi-sentence callout/warning cards must set `style: \"typeset\"`",
+                    format!("{loc}.style"),
+                    "substeps[] breakdown cards must use `casual` (`Single Day`), `handwritten` (`Pennstander`), or `typeset` (`Lato`)",
+                );
+            }
+            if w.content.contains("NEVER EVER") && w.style != MathRenderStyle::Typeset {
+                report.push(
+                    GateCategory::WarmPaperTheme,
+                    format!("{loc}.style"),
+                    "`NEVER EVER` Golden-Rule cards must set `style: \"typeset\"` (`Lato` clean wrap)",
                 );
             }
 
-            if let Some(color) = w.color.as_deref() {
-                validate_ink_color(color, &format!("{loc}.color"), report);
+            if let Some(sc) = w.scale
+                && !(0.65..=1.50).contains(&sc)
+            {
+                report.push(
+                    GateCategory::WarmPaperTheme,
+                    format!("{loc}.scale"),
+                    format!("scene.write scale {sc} out of harmonious range `0.65..=1.50`"),
+                );
             }
-            if let Some(card) = w.card.as_deref() {
-                if let Some(fill) = card.fill_color.as_deref()
-                    && !is_approved_card_fill(fill)
-                {
+            if let Some(deg) = w.rotation_deg {
+                let normal_tilt = (-12.0..=12.0).contains(&deg);
+                let vertical_axis = (deg.abs() - 90.0).abs() < 0.5;
+                if !normal_tilt && !vertical_axis {
                     report.push(
                         GateCategory::WarmPaperTheme,
-                        format!("{loc}.card.fillColor"),
+                        format!("{loc}.rotationDeg"),
                         format!(
-                            "card fillColor '{fill}' must be a Warm-Paper `c1..c8` soft pastel fill (dark fills forbidden)"
+                            "scene.write rotationDeg {deg} out of harmonious tilt bounds (`-12°..+12°` or `±90°`)"
                         ),
                     );
                 }
+            }
+
+            let is_solid_typewriter_stamp = w.style == MathRenderStyle::Typewriter
+                && w.card
+                    .as_deref()
+                    .and_then(|c| c.fill_color.as_deref())
+                    .is_some_and(is_solid_stamp_badge_fill);
+
+            if let Some(color) = w.color.as_deref() {
+                if is_solid_typewriter_stamp && color.trim().eq_ignore_ascii_case("#FFFFFF") {
+                    // Inverted `#FFFFFF` ink is approved on solid `typewriter` stamp badges (`#1565C0`, `#991B1B`).
+                } else {
+                    validate_ink_color(color, &format!("{loc}.color"), report);
+                }
+            }
+            if let Some(card) = w.card.as_deref() {
+                if let Some(fill) = card.fill_color.as_deref() {
+                    let fill_ok = is_approved_card_fill(fill)
+                        || (w.style == MathRenderStyle::Typewriter
+                            && is_solid_stamp_badge_fill(fill));
+                    if !fill_ok {
+                        report.push(
+                            GateCategory::WarmPaperTheme,
+                            format!("{loc}.card.fillColor"),
+                            format!(
+                                "card fillColor '{fill}' must be a Warm-Paper pastel fill (or solid `#1565C0`/`#991B1B` on `typewriter` stamps)"
+                            ),
+                        );
+                    }
+                }
                 if let Some(border) = card.border_color.as_deref() {
                     validate_border_or_ink_color(border, &format!("{loc}.card.borderColor"), report);
+                }
+                if let Some(hc) = card.header_color.as_deref() {
+                    validate_border_or_ink_color(hc, &format!("{loc}.card.headerColor"), report);
                 }
                 if let Some(bw) = card.border_width_pt
                     && f64::from(bw) > MAX_DIAGRAM_STROKE_PT
@@ -1037,8 +1084,19 @@ fn validate_carbon_command(
             }
 
             for (s_idx, span) in w.spans.iter().enumerate() {
+                if span.form == Some(TextForm::ClassicSerif) {
+                    report.push(
+                        GateCategory::WarmPaperTheme,
+                        format!("{loc}.spans[{s_idx}].form"),
+                        "`classic-serif` form is forbidden by default; use natural `PennstanderMath` voices",
+                    );
+                }
                 if let Some(c) = span.color.as_deref() {
-                    validate_ink_color(c, &format!("{loc}.spans[{s_idx}].color"), report);
+                    if is_solid_typewriter_stamp && c.trim().eq_ignore_ascii_case("#FFFFFF") {
+                        // Approved `#FFFFFF` stamp text on solid `typewriter` badge.
+                    } else {
+                        validate_ink_color(c, &format!("{loc}.spans[{s_idx}].color"), report);
+                    }
                 }
                 check_katex_text(&span.text, &format!("{loc}.spans[{s_idx}].text"), report);
                 if let Some(tid) = span.token_id.as_deref() {
@@ -1048,6 +1106,13 @@ fn validate_carbon_command(
                 sym.register_html_ids(&w.id, &span.text);
             }
             for (t_idx, ts) in w.token_styles.iter().enumerate() {
+                if ts.form == Some(TextForm::ClassicSerif) {
+                    report.push(
+                        GateCategory::WarmPaperTheme,
+                        format!("{loc}.tokenStyles[{t_idx}].form"),
+                        "`classic-serif` form is forbidden by default; use natural `PennstanderMath` voices",
+                    );
+                }
                 if let Some(c) = ts.color.as_deref() {
                     validate_ink_color(c, &format!("{loc}.tokenStyles[{t_idx}].color"), report);
                 }
@@ -1162,6 +1227,13 @@ fn validate_carbon_command(
                 }
             }
             if let Some(rep) = &rub.replacement {
+                if rep.style == Some(MathRenderStyle::ClassicSerif) {
+                    report.push(
+                        GateCategory::WarmPaperTheme,
+                        format!("{loc}.replacement.style"),
+                        "`classic-serif` is forbidden by default in edit.rub replacement",
+                    );
+                }
                 if let Some(c) = rep.color.as_deref() {
                     validate_ink_color(c, &format!("{loc}.replacement.color"), report);
                 }
@@ -1296,19 +1368,25 @@ fn is_semantic_token(color: &str) -> bool {
     )
 }
 
-/// Approved high-contrast `c1..c8` editorial ink hexes (`docs/carbon-visual-theme.md` §3).
+/// Approved high-contrast `c1..c8` & curated voice ink hexes (`docs/carbon-visual-theme.md` §3–§4).
 fn is_approved_ink_hex(hex_upper: &str) -> bool {
     matches!(
         hex_upper,
         "#1F2421"
+            | "#0F172A"
             | "#68645B"
             | "#2563EB"
+            | "#1D4ED8"
+            | "#0284C7"
             | "#15803D"
             | "#16A34A"
             | "#DC2626"
             | "#B91C1C"
+            | "#991B1B"
+            | "#9F1239"
             | "#B45309"
             | "#D97706"
+            | "#A16207"
             | "#6D28D9"
             | "#7C3AED"
             | "#0D9488"
@@ -1316,7 +1394,15 @@ fn is_approved_ink_hex(hex_upper: &str) -> bool {
     )
 }
 
-/// Approved Warm-Paper `c1..c8` card/cell pastel fills (`docs/carbon-visual-theme.md` §3).
+/// Solid stamp card fills permitted exclusively on `style: "typewriter"` badges (`EXAMPLE`, `NON-CALC`, `KEY TRAP`).
+fn is_solid_stamp_badge_fill(color: &str) -> bool {
+    matches!(
+        color.trim().to_ascii_uppercase().as_str(),
+        "#1565C0" | "#0D47A1" | "#991B1B" | "#7F1D1D" | "#15803D"
+    )
+}
+
+/// Approved Warm-Paper `c1..c8` card/cell pastel fills (`docs/carbon-visual-theme.md` §3–§4).
 fn is_approved_card_fill(color: &str) -> bool {
     if is_semantic_token(color) {
         return true;
@@ -1329,9 +1415,12 @@ fn is_approved_card_fill(color: &str) -> bool {
             | "#FDFCF9"
             | "#FCF9F2"
             | "#EFF6FF"
+            | "#F0F9FF"
             | "#F0FDF4"
             | "#FFF1F2"
+            | "#FDF2F8"
             | "#FFFBEB"
+            | "#FEF9C3"
             | "#F5F3FF"
             | "#F0FDFA"
             | "#F8FAFC"
@@ -1346,13 +1435,20 @@ fn is_approved_border_hex(hex_upper: &str) -> bool {
         || matches!(
             hex_upper,
             "#3B82F6"
+                | "#38BDF8"
                 | "#F87171"
+                | "#9F1239"
                 | "#F59E0B"
+                | "#CA8A04"
+                | "#A16207"
                 | "#8B5CF6"
                 | "#14B8A6"
                 | "#CBD5E1"
                 | "#DEE4EC"
                 | "#DBD2C2"
+                | "#0D47A1"
+                | "#1565C0"
+                | "#7F1D1D"
         )
 }
 
@@ -1800,17 +1896,6 @@ fn count_prose_words_outside_math(text: &str) -> usize {
                 .count()
         })
         .sum()
-}
-
-fn count_sentences(text: &str) -> usize {
-    let Some(segments) = split_prose_outside_math(text) else {
-        return 1;
-    };
-    let joined = segments.join(" ");
-    joined
-        .chars()
-        .filter(|c| matches!(c, '.' | '!' | '?'))
-        .count()
 }
 
 fn check_pedagogy_and_clean_room(
@@ -2278,6 +2363,158 @@ mod tests {
         assert!(!prep.ok);
         assert!(prep.issues.iter().any(|i| i.category == GateCategory::Pedagogy));
         assert!(prep.issues.iter().any(|i| i.category == GateCategory::CleanRoom));
+
+        Ok(())
+    }
+
+    #[test]
+    fn validates_five_curated_font_voices_and_rejects_classic_serif() -> Result<()> {
+        let loader = RuleLoader::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rules"));
+        let rules = loader.load("gyaraplus", "maths", None)?;
+
+        let mut pkg = sample_valid_package()?;
+
+        // Reference Example 4A on Left Pane: `typewriter` stamp + `typeset` stem + `handwritten` E.g.
+        pkg.question.left_pane_carbon_commands = serde_json::from_str(
+            r##"[
+              {
+                "op": "scene.write",
+                "params": {
+                  "id": "q-stamp",
+                  "pane": "left",
+                  "zone": "spine",
+                  "style": "typewriter",
+                  "rotationDeg": -3.5,
+                  "spans": [{ "text": "EXAMPLE", "color": "#FFFFFF", "sizePt": 15.0, "form": "typewriter" }],
+                  "card": { "fillColor": "#1565C0", "borderColor": "#0D47A1", "borderStyle": "solid", "borderWidthPt": 1.4 }
+                }
+              },
+              {
+                "op": "scene.write",
+                "params": {
+                  "id": "q-stem",
+                  "pane": "left",
+                  "zone": "spine",
+                  "anchor": { "mode": "below", "targetId": "q-stamp", "offsetPt": [0, 10] },
+                  "style": "typeset",
+                  "color": "#0F172A",
+                  "content": "In a sale, all prices are reduced by $20\\%$. A coat now costs $\\pounds 48$."
+                }
+              },
+              {
+                "op": "scene.write",
+                "params": {
+                  "id": "q-eg",
+                  "pane": "left",
+                  "zone": "spine",
+                  "anchor": { "mode": "below", "targetId": "q-stem", "offsetPt": [14, 10] },
+                  "style": "handwritten",
+                  "scale": 1.05,
+                  "content": "$\\textcolor{#0284C7}{\\text{E.g. } 100\\% - 20\\% = }\\htmlId{eg-ans}{\\textcolor{#DC2626}{80\\%}}$"
+                }
+              },
+              {
+                "op": "interact.ask",
+                "params": {
+                  "promptId": "q-mcq",
+                  "pane": "left",
+                  "kind": "choice-chips",
+                  "label": "Select one answer:",
+                  "choices": [
+                    { "id": "A", "label": "$\\pounds 38.40$" },
+                    { "id": "B", "label": "$\\pounds 57.60$" },
+                    { "id": "C", "label": "$\\pounds 58.00$" },
+                    { "id": "D", "label": "$\\pounds 60.00$" },
+                    { "id": "E", "label": "$\\pounds 62.40$" }
+                  ]
+                }
+              }
+            ]"##,
+        )?;
+
+        // Reference Example 4B on Right Pane: `handwritten` step + `casual` tilted `#FEF9C3` RE-CHECK card + `marker` headline
+        pkg.solution.parts[0].steps[0]
+            .sublevels
+            .get_mut(&8)
+            .ok_or_else(|| HydrogenError::Validation("missing L8".into()))?
+            .carbon_commands = serde_json::from_str(
+            r##"[
+              {
+                "op": "scene.write",
+                "params": {
+                  "id": "sol-head",
+                  "pane": "right",
+                  "zone": "spine",
+                  "style": "marker",
+                  "scale": 1.05,
+                  "color": "#1D4ED8",
+                  "content": "Reverse Percentage Unitary Scaling"
+                }
+              },
+              {
+                "op": "scene.write",
+                "params": {
+                  "id": "sol-s1",
+                  "pane": "right",
+                  "zone": "spine",
+                  "anchor": { "mode": "below", "targetId": "sol-head", "offsetPt": [0, 8] },
+                  "style": "handwritten",
+                  "color": "#1F2421",
+                  "content": "$\\frac{4}{5}P = 48 \\implies P = 48 \\div 4 \\times 5 = \\htmlId{sol-sixty}{\\textcolor{#15803D}{\\pounds 60}}$"
+                }
+              },
+              {
+                "op": "scene.write",
+                "params": {
+                  "id": "note-recheck",
+                  "pane": "right",
+                  "zone": "scratch",
+                  "anchor": { "mode": "auto-margin", "targetId": "sol-sixty", "prefer": "right", "autoConnector": true },
+                  "style": "casual",
+                  "rotationDeg": 1.5,
+                  "scale": 0.90,
+                  "content": "Quick check: $20\\%$ of $\\pounds 60 = \\pounds 12$, and $\\pounds 60 - \\pounds 12 = \\pounds 48$!",
+                  "card": {
+                    "fillColor": "#FEF9C3",
+                    "borderColor": "#CA8A04",
+                    "borderStyle": "dashed",
+                    "headerBanner": "RE-CHECK SALE",
+                    "headerColor": "#A16207",
+                    "collapsible": true
+                  }
+                }
+              }
+            ]"##,
+        )?;
+
+        let ok_rep = verify_question_package(&pkg, Some(&rules)).into_result()?;
+        assert!(ok_rep.ok);
+
+        // Verify `classic-serif` (or alias `classic-tex`) is deterministically rejected!
+        pkg.solution.parts[0].steps[0]
+            .sublevels
+            .get_mut(&9)
+            .ok_or_else(|| HydrogenError::Validation("missing L9".into()))?
+            .carbon_commands
+            .push(serde_json::from_str(
+                r#"{
+                    "op": "scene.write",
+                    "params": {
+                        "id": "bad_serif",
+                        "pane": "right",
+                        "style": "classic-serif",
+                        "content": "$x = 60$"
+                    }
+                }"#,
+            )?);
+        let serif_rep = verify_question_package(&pkg, Some(&rules));
+        assert!(!serif_rep.ok);
+        assert!(
+            serif_rep
+                .issues
+                .iter()
+                .any(|i| i.message.contains("classic-serif"))
+        );
 
         Ok(())
     }

@@ -16,7 +16,7 @@
 | :--- | :--- |
 | **Layouts, Surfaces & Themes** | `single` (full-canvas) and `split` (`0.22–0.55` draggable Question \| Working Whiteboard divider, collapsible left pane); `plain`, `grid`, `dotted`, `ruled`, `lined-margin`, `isometric` surfaces; `cream-daylight`, `pure-white`, `slate-focus`, `chalkboard` themes |
 | **Header Chrome, Book Index & Rich Feedback** | Subject/paper badges, part tabs (`(a)(b)(c)`), marks chip, `CalculatorMode` (`allowed` / `non-calculator`), **Collapsible Slide-Over Left-Band Book Index** (`Subjects` switcher + `Papers` \| `Topics/Chapters` \| `Stats` tabs + live search/filters), **Multi-Comment Drawer with 1-Click `"Snap Board"` PNG & Image/PDF Attachments** (gated `authorMode` for authoring tools), Dual Smart Timers (`Session` + `Item`), 3-state `ProgressStatus` (`default` / `in-progress` / `completed`), `Important ★` star, spaced-repetition `ReminderInterval` (`0d..15d`), hover vocabulary dictionary, pinned reference strip, and `StepActionChip`s |
-| **Dual Typography & Speech-Synced Writing** | `handwritten` (`Caveat` / `PatrickHand` + natural baseline jitter) and `typeset` (`Lato` prose + embedded `KaTeX` math); `\htmlId{tok}{...}` sub-token hit-boxes; `SpeechBeat`-synced progressive stroke reveal; callout cards (`solid`, `dashed`, `double-underline`, collapsible `auto-margin` cards); seamless partial `edit.rub` with inline replacement |
+| **5 Curated Font Voices & Speech-Synced Writing** | `handwritten` (`Pennstander` + `PennstanderMath`), `typeset` (`Lato` + `PennstanderMath`), `casual` (`Single Day` + `PennstanderMath`), `marker` (`Patrick Hand` + `PennstanderMath`), and `typewriter` (`Special Elite` + `PennstanderMath`); `\htmlId{tok}{...}` sub-token hit-boxes; `SpeechBeat`-synced progressive stroke reveal; callout cards (`solid`, `dashed`, `double`, `spiky`, collapsible `auto-margin` cards); seamless partial `edit.rub` with inline replacement |
 | **2D Geometry, Calculus, 22 Macros & Physics** | Composable primitives (`point`, `segment`, `ray`, `arrow`/`vector`, `rect`, `polygon`, `circle`, `arc`, `angle`, `table`, `svgPath`, `label`), `coordinatePlane` calculus (`plots` with auto roots/intersections/stationary points, `tangentAt`, `riemannSum`, `signedIntegral`), 22 Infant-to-GCSE macros (`tenFrame`, `barModel`, `fractionBar`, `columnCalc`, `clock`, `venn`, `pieChart`, `smartTable`, …), and 9 `PhysicsRig` components (`spring`, `pulley`, `inclinedPlane`, `pendulum`, `opticsLensRay`, `forceBody`, …) |
 | **Inline 3D Mathematical Stage** | Right-handed `(x, y, z)` (`+z` up) orbit/zoom/turntable stage: `cuboid`, `cylinder`, `cone`, `sphere`, `pyramid`, `triangular-prism`, `trapezoidal-prism`, regular/custom polygonal prisms, `slicePolygons`, `internalPaths`, 3D `rightAngles` & `angleArcs`, multivariate `surface3D` $z = f(x, y)$, `solidOfRevolution` + Riemann discs, `planeSlice3D` conic sections (circle/ellipse/parabola/hyperbola), voxel `cubeAssembly`, all 11 cube `netFold`s + pyramid/prism/cylinder nets with NVR `faceMarkings`, simultaneous `planes` intersections, and 3D `molecule`s |
 | **Reactive `@param` & 120Hz CAS Sync** | Live sliders (`bottom-bar`, `top-bar`, `floating`, `hidden`), 2D/3D constrained drag handles, inline editable tokens & table cells, `@param` / `@eval(...)` / `@{...}` / `repeat` bindings, and zero-lag two-way `param.changed` $\leftrightarrow$ `reactive.setParams` calculator loop |
@@ -636,9 +636,9 @@ Avoid hardcoding pixel coordinates when authoring multi-step solutions! Carbon's
 
 ---
 
-### 5.3 Scene Writing & Rich Cards (`scene.write`)
+### 5.3 Scene Writing, Curated Natural Font Voices & Rich Cards (`scene.write`)
 
-Renders KaTeX equations (`$...$` / `\(...\)`), mixed prose + math, warning/rule cards, inline editable fill-in-the-blank tokens, and addressable `\htmlId{token}{...}` sub-expressions:
+Renders smooth natural equations (`$...$` / `\(...\)`), mixed prose + math, warning/rule/stamp cards, inline editable fill-in-the-blank tokens, and addressable `\htmlId{token}{...}` sub-expressions:
 
 ```json
 {
@@ -646,32 +646,36 @@ Renders KaTeX equations (`$...$` / `\(...\)`), mixed prose + math, warning/rule 
   "params": {
     "id": "eq-volume",
     "pane": "right",
-    "zone": "main-work",
-    "anchor": { "kind": "below", "targetId": "cyl-3d", "gapPt": 16 },
-    "text": "Volume $V = \\pi \\htmlId{r_tok}{r^2} \\htmlId{h_tok}{h} = \\pi (@r)^2 (@h) = @eval(pi * r^2 * h)\\text{ cm}^3$",
-    "typography": "typeset",
-    "mathStyle": "display",
-    "color": "#0F172A",
-    "sizePt": 18.5,
-    "speed": "natural",
-    "spanStyles": {
-      "r_tok": { "color": "#2563EB", "bold": true },
-      "h_tok": { "color": "#0D9488", "bold": true }
-    },
-    "card": {
-      "title": "Live Formula",
-      "fillColor": "#F8FAFC",
-      "borderColor": "#CBD5E1",
-      "borderStyle": "solid",
-      "paddingPt": 10.0,
-      "collapsible": false
-    }
+    "zone": "spine",
+    "anchor": { "mode": "below", "targetId": "cyl-3d", "offsetPt": [0, 16] },
+    "style": "handwritten",
+    "content": "Volume $V = \\pi \\htmlId{r_tok}{r^2} \\htmlId{h_tok}{h} = \\pi (@r)^2 (@h) = @eval(round(pi * r^2 * h * 10) / 10)\\text{ cm}^3$",
+    "color": "#1F2421",
+    "scale": 1.0,
+    "rotationDeg": 0.0,
+    "textAlign": "left",
+    "speed": { "mode": "preset", "preset": "fast" },
+    "tokenStyles": [
+      { "tokenId": "r_tok", "color": "#2563EB", "form": "bold" },
+      { "tokenId": "h_tok", "color": "#0D9488", "form": "bold" }
+    ]
   }
 }
 ```
 
-- **`typography`:** `"typeset"` (`Lato` prose + `KaTeX` math) or `"handwritten"` (`Caveat` marker prose + handwritten-styled math).
-- **`mathStyle`:** `"inline"` or `"display"` (tall $\sum, \int, \frac{}{}$ limits).
+#### Bundled Offline Font Voices (`style` / `font` & per-span `form`)
+Carbon bundles a curated, 100% offline set of smooth, human-feeling fonts across macOS, NVIDIA DGX Spark Linux, iPadOS, and `engine.wasm`. **By default, stiff Times-Roman / Computer Modern serifs are completely eliminated** — every board voice pairs its prose face with smooth natural **`PennstanderMath`** (`OpenType MATH`) for `$...$` LaTeX/KaTeX formulas unless `"classic-serif"` is explicitly requested:
+
+| `style` / `font` Value (plus Accepted Aliases) | Bundled Offline Font Face(s) | `$...$` Math Font | Default Size (`left` / `right`) | Preferred Angle & Alignment | When `Hydron` / `SIGMA` / `Theta` Should Use It |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`"handwritten"`** *(default; aliases `"natural"`, `"pennstander"`)* | `Pennstander-Regular.otf` (`101`) | **`PennstanderMath`** (`102`) | `16.8 pt` / `21.0 pt` (`scale: 1.0`) | `0°` upright (`±1.5°` on margin check cards), `left` | **Default for all Solution Pane (`right`) worked steps**, `Theta` algebraic derivations, `E.g.` examples, and yellow `#FEF9C3` `RE-CHECK` cards |
+| **`"typeset"`** *(aliases `"clean"`, `"lato"`, `"sans"`)* | `Lato-Regular.ttf` / `Lato-Bold.ttf` (`UiSans`) | **`PennstanderMath`** (`102`) | `16.8 pt` / `21.0 pt` (`scale: 1.0`) | `0°` upright, `left` | **Default for Question Pane (`left`) stems**, numbered instructions (`1) Substitute...`), `"NEVER EVER..."` rule cards, and structured summaries |
+| **`"casual"`** *(aliases `"single-day"`, `"note"`)* | `SingleDay-Regular.ttf` (`106`) | **`PennstanderMath`** (`102`) | `scale: 0.90–1.0` | `rotationDeg: -2.0` to `+1.5`, `left` | Friendly sticky notes, Primary / 11+ hints, encouraging whispers, and informal side-notes |
+| **`"marker"`** *(aliases `"patrick-hand"`, `"chalk"`, `"board-marker"`)* | `PatrickHand-Regular.ttf` (`107`) | **`PennstanderMath`** (`102`) | `scale: 0.95–1.10` | `rotationDeg: -1.5` to `+1.5`, `left` / `center` | Bold felt-tip classroom board headlines, key takeaway callouts, and diagram captions |
+| **`"typewriter"`** *(aliases `"special-elite"`, `"stamp"`)* | `SpecialElite-Regular.ttf` (`108`) | **`PennstanderMath`** (`102`) | `sizePt: 14–16` (`scale: 0.80–0.92`) | `rotationDeg: -3.5` (stamps) or `0°`, `left` / `center` | Corner stamps (`EXAMPLE`, `NON-CALC`, `KEY TRAP`, `CASE CLUE`), badges, and detective/word-problem artefacts |
+| **`"classic-serif"`** *(aliases `"classic-tex"`, `"serif"`)* | `Lato` prose + `KaTeX_Main` (`103`) | `KaTeX_Math-Italic` (`104`) + `LatinModernMath` (`105`) | `16.8 pt` / `21.0 pt` | `0°` upright | **Explicit opt-in ONLY** — never use unless reproducing a formal academic serif exam facsimile |
+
+- **Per-Word / Per-Token Mixing (`spans[].form` & `tokenStyles[].form`):** Supports `"regular"`, `"bold"`, `"italic"`, `"bold-italic"`, `"monospace"`, `"handwritten"` (`"natural"`), `"typeset"` (`"clean"`), `"casual"` (`"single-day"`), `"marker"` (`"patrick-hand"`), `"typewriter"` (`"special-elite"`), `"classic-serif"`, and `"math"`.
 - **`editableTokens`:** Make any `\htmlId{ans}{?}` token interactive on the board:
   ```json
   "editableTokens": [
@@ -1146,11 +1150,15 @@ Each entry in `"steps"` automatically inserts a `flow.timeline` `"step"` checkpo
 
 Any external LLM prompt (`Visage`) or curriculum compiler authoring solutions for Carbon **MUST** follow these rules so every lesson looks like a crisp textbook + master-teacher board:
 
-1. **Always Wrap Math in `$...$` or `\(...\)`:**
+1. **Always Wrap Math in `$...$` or `\(...\)` (Rendered Naturally in `PennstanderMath`):**
    - **DO:** `"Gradient $m = \\frac{y_2 - y_1}{x_2 - x_1} = \\frac{1}{2}$"`
    - **NEVER:** Raw ASCII math (`"m = (y2 - y1)/(x2 - x1) = 1/2"` or `"x^2 + 3x"` outside `$...$`).
-2. **Keep Prose in Clean Sans-Serif (`typeset` `Lato`):**
-   - Put question stems, multi-sentence explanations, and `"NEVER EVER..."` warning cards in `"typography": "typeset"` so Carbon wraps them cleanly at responsive reading sizes (`16.8 pt` base in the Left Question Pane) rather than shrinking a paragraph onto one tiny line.
+   - Carbon automatically renders `$...$` formulas in smooth, natural **`PennstanderMath`** across all standard styles—**never** request `"classic-serif"` unless explicitly asked for academic Times/Computer Modern serif print.
+2. **Choose the Right Curated Font Voice, Size, Angle & Colour per Pedagogical Role:**
+   - **Question Stems & Structured Rules (`pane: "left"`, `16.8 pt` base):** Use `"style": "typeset"` (`"clean"` — smooth `Lato` prose + `PennstanderMath` equations), upright `0°`, dark ink `#1F2421` / `#0F172A`.
+   - **Worked Solution Steps & `Theta` Derivations (`pane: "right"`, `21.0 pt` base):** Use `"style": "handwritten"` (`"natural"` — `Pennstander` + `PennstanderMath`), upright `0°`, primary ink `#1F2421`, focus `"c1"` `#2563EB`, final answer `"c2"` `#15803D`.
+   - **Margin Re-Checks, Sticky Notes & Friendly Hints (`zone: "scratch"`):** Use `"style": "handwritten"` or `"style": "casual"` (`Single Day`) / `"marker"` (`Patrick Hand`), `scale: 0.88–0.95`, gentle human tilt `rotationDeg: -2.0` to `+1.5`, soft card fill (`#FEF9C3` yellow check card with `#CA8A04` dashed border, or `#EFF6FF` breakdown card with `#3B82F6` border).
+   - **Stamps & Case Badges (`EXAMPLE`, `NON-CALC`, `KEY TRAP`):** Use `"style": "typewriter"` (`Special Elite`), `sizePt: 14–16`, stamp tilt `rotationDeg: -3.5` (or `0°`).
 3. **Interactive 2D/3D Geometry Coupled to Live Equations:**
    - Whenever placing a geometric solid (`cylinder`, `cone`, `cuboid`, `prism`), graph, or physics rig, define `@param`s via `reactive.defineParams`, set `"lockViewScale": true` (plus optional `"ghostParams"` / `"ghostSolid"`), show coordinate axes through `(0,0)` / `(0,0,0)`, and reference `@r` / `@eval(...)` inside `scene.write` so dragging a slider or handle updates **both** the shape and the worked formula live!
 4. **Zero-Overlap Table-Cell & Sub-Token Callouts:**

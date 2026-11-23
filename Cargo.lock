@@ -312,7 +312,7 @@ dependencies = [
 [[package]]
 name = "carbon-protocol"
 version = "0.1.0"
-source = "git+ssh://git@github.com/raphsaeed/carbon.git?branch=main#bc5ad08157e1e0ad6cdeddcb4f1d521045695add"
+source = "git+ssh://git@github.com/raphsaeed/carbon.git?branch=main#27f629c538a661c8072162d2ddddc7f8f27af9eb"
 dependencies = [
  "serde",
  "serde_json",

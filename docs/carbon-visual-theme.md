@@ -63,24 +63,26 @@ Carbon runs a calm, high-contrast light editorial theme throughout both the **Fu
 
 ---
 
-## 3. Solution Ink, Card & Diagram Color Rules (Zero Visual Conflict)
+## 3. Solution Ink, Card, Stamp & Diagram Color Rules (Zero Visual Conflict)
 
-On the `#FDFCF9` squared/plain whiteboard, restrict all equations, diagrams, tables, and callout cards to Carbon's high-contrast editorial ink tokens (`"c1"`..`"c8"` or exact hex equivalents):
+On the `#FDFCF9` squared/plain whiteboard, restrict all equations, diagrams, tables, stamps, and callout cards to Carbon's harmonized high-contrast editorial ink tokens (`"c1"`..`"c8"` or exact curated hexes):
 
-| Pedagogical Role | Token / Ink Hex | Soft Card Fill (when boxed) | Card Border |
+| Pedagogical Role | Token / Ink Hex | Soft Card Fill (when boxed) | Card Border / Banner |
 | :--- | :--- | :--- | :--- |
-| **Standard Question Stem & Working Steps** | *(omit `color` $\to$ `#1F2421`)* | *(unboxed clean paper)* | — |
-| **Primary Algebraic / Geometric Focus (`c1`)** | `#2563EB` (Royal Blue) | `#EFF6FF` | `#3B82F6` |
+| **Question Stem & Working Steps** | `#0F172A` / `#1F2421` *(or omit `color`)* | *(unboxed clean paper)* | — |
+| **Primary Algebraic / Geometric Focus (`c1`)** | `#2563EB` / `#1D4ED8` (Royal Blue) | `#EFF6FF` | `#3B82F6` |
+| **Worked `E.g.` Example Lead Ink** | `#0284C7` (Sky Blue) | *(unboxed or `#F0F9FF`)* | `#38BDF8` |
 | **Final Answer & Correct Checkmarks (`c2`)** | `#15803D` / `#16A34A` (Emerald) | `#F0FDF4` | `#16A34A` |
-| **Key Warning / Mistake / Constraint (`c3`)** | `#DC2626` / `#B91C1C` (Crimson) | `#FFF1F2` | `#F87171` |
-| **Hint / Method Note / Highlight (`c4`)** | `#B45309` / `#D97706` (Warm Amber) | `#FFFBEB` | `#F59E0B` |
+| **Key Warning / Mistake / `"NEVER EVER"` (`c3`)** | `#DC2626` / `#B91C1C` / `#991B1B` | `#FFF1F2` or `#FDF2F8` | `#F87171` or `#9F1239` |
+| **Hint / Sticky `RE-CHECK` / Method (`c4`)** | `#B45309` / `#D97706` / `#1F2421` | `#FEF9C3` or `#FFFBEB` | `#CA8A04` (dashed, banner `#A16207`) or `#F59E0B` |
 | **Sub-Step Breakdown / Substitution (`c5`)** | `#6D28D9` / `#7C3AED` (Deep Violet) | `#F5F3FF` | `#8B5CF6` |
 | **Secondary Diagram / Quantity B (`c6`)** | `#0D9488` (Teal) | `#F0FDFA` | `#14B8A6` |
 | **Auxiliary Construction / Neutral (`c8`)** | `#475569` (Slate Graphite) | `#F8FAFC` | `#CBD5E1` |
+| **Solid `typewriter` Corner Stamps (`EXAMPLE`, `NON-CALC`)** | `#FFFFFF` *(strictly on solid stamp cards)* | `#1565C0` (Blue) or `#991B1B` (Crimson) | `#0D47A1` or `#7F1D1D` |
 
 ### Mandatory Anti-Clash Rules for Diagrams, Tables & Callouts
 1. **Transparent Labels Only:** Never place opaque white background boxes behind coordinate, vertex, or diagram labels (opaque boxes clip ugly holes over Carbon's `#DAE4F0` grid).
-2. **Fine Strokes Only:** Keep diagram/axis/table strokes crisp (`1.0–1.75 pt`); never use thick heavy borders (`> 2.2 pt`) that overpower `Lato` text or KaTeX math.
+2. **Fine Strokes Only:** Keep diagram/axis/table strokes crisp (`1.0–1.75 pt`); never use thick heavy borders (`> 2.2 pt`) that overpower `Lato` prose or `PennstanderMath` equations.
 3. **Clean Table Cell & Sub-Token Highlights:**
    - When highlighting a table cell (`"tbl:r0c2"`) or equation sub-token (`\htmlId{tok_1}{...}`), pair a soft pastel `cellStyles` fill (`#DCFCE7`, `#DBEAFE`, or `#FEF3C7`) with concise `focus.annotate` (`"kind": "check"` or `"label"`).
    - **NEVER** include a literal `✓` character inside `label` when `"kind": "check"` (Carbon already draws a crisp corner tick).
@@ -88,15 +90,31 @@ On the `#FDFCF9` squared/plain whiteboard, restrict all equations, diagrams, tab
 
 ---
 
-## 4. Typography & LaTeX/KaTeX Discipline
+## 4. Curated Font Voices, Natural `PennstanderMath`, Size & Angle Discipline
 
-1. **Smooth Sans-Serif Prose (`Lato` / `Lato-Bold`):**
-   - Carbon renders all UI chrome in `Lato-Bold` and all `"style": "typeset"` prose in `Lato` (`16.8 pt` base in the Left Question Pane).
-   - Always set `"style": "typeset"` for question stems, multi-sentence explanations, breakdown cards, and `"NEVER EVER..."` misconception cards so Carbon wraps paragraphs cleanly.
-2. **Strict `$...$` LaTeX Math Everywhere:**
-   - Wrap **every** formula, variable, fraction, exponent, angle, ratio, and currency/unit expression in `$...$` or `\(...\)` (e.g. `$\frac{3}{5}$`, `$x^2 + 4x - 12 = 0$`, `$3 : 5$`, `$\pounds 72$`, `$18\text{ cm}^2$`).
-   - **NEVER** emit raw ASCII math (`x^2`, `3/5`, `sqrt(2)`, `!=`, `<=`) outside `$...$`.
-   - Wrap key target terms in `\htmlId{step2_rhs}{...}` so steps, breakdowns, and `edit.rub` substitutions anchor with pixel precision.
+Across the **Hydrogen + Theta + SIGMA + Carbon** ecosystem, typography must always feel smooth, neat, and naturally human—**NEVER** stiff academic Times-Roman / Computer Modern print unless a user explicitly requests `"classic-serif"`. Carbon bundles all fonts 100% offline across macOS, NVIDIA DGX Spark Linux, and iPad WASM.
+
+### 4.1 Golden Rule for LaTeX / KaTeX Equations (`$...$`)
+- **Wrap ALL math, fractions, powers, ratios, variables, and currency/units in `$...$` or `\(...\)`** (including every `Theta` `katex` string, e.g. `$\frac{3}{5}$`, `$x^2 + 4x - 12 = 0$`, `$3 : 5$`, `$\pounds 72$`, `$18\text{ cm}^2$`).
+- **NEVER** emit raw ASCII math (`x^2`, `3/5`, `sqrt(2)`, `!=`, `<=`) outside `$...$`.
+- **Natural Math Everywhere (`PennstanderMath`):** Carbon automatically renders `$...$` equations in **`PennstanderMath`** (a full OpenType `MATH` natural teacher-handwriting font supporting `\frac`, `\sqrt`, `\sum`, `\int`, matrices, Greek, and stretchy brackets) across **all** 5 standard voices—even inside clean `Lato` question stems!
+- **NEVER** request `"classic-serif"` (`"classic-tex"` / `"serif"`) unless the user explicitly asks for formal academic serif print.
+- Wrap key target terms in `\htmlId{step2_rhs}{...}` so steps, breakdowns, and `edit.rub` substitutions anchor with pixel precision.
+
+### 4.2 The 5 Curated Font Voices & Exactly Where to Use Each (`scene.write.style`)
+
+| Pedagogical Situation | `style` / `font` Value (Accepted Aliases) | Bundled Prose Font (+ `$...$` Math) | Size (`scale` / `sizePt`) | Direction & Angle (`rotationDeg`, `textAlign`) | Preferred Ink & Card Colours |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. Worked Solution Steps, `Theta` Derivations & `E.g.` Examples** | **`"handwritten"`** *(default; aliases `"natural"`, `"pennstander"`)* | `Pennstander` + `PennstanderMath` | Right Board base `21.0 pt` (`scale: 1.0`); Left `E.g.` `scale: 1.05` | LTR, `0°` upright (`align: "equals"` between stacked steps), `textAlign: "left"` | Primary `#1F2421`, Algebraic focus `#2563EB` (`c1`), Example lead `#0284C7`, Final answer `#15803D` (`c2`) |
+| **2. Question Stems, Numbered Instructions & Golden-Rule Cards** | **`"typeset"`** *(aliases `"clean"`, `"lato"`, `"sans"`)* | Smooth `Lato` (`Regular`/`Bold`) + `PennstanderMath` | Left Question Pane base `16.8 pt` (`scale: 1.0`) | LTR, `0°` upright, `textAlign: "left"`, automatic paragraph wrap | Ink `#0F172A` / `#1F2421`; key underlined phrases bold `#991B1B`; `"NEVER EVER"` rule card fill `#FDF2F8` + border `#9F1239` (or `#FFF1F2` + `#F87171`) |
+| **3. Friendly Sticky Notes, Breakdown Cards & Primary/11+ Hints** | **`"casual"`** *(aliases `"single-day"`, `"note"`)* | `Single Day` + `PennstanderMath` | `scale: 0.88–0.95` | LTR, gentle human tilt `rotationDeg: -2.0` to `+1.5`, `left` | Yellow check card `#FEF9C3` + dashed `#CA8A04` border (banner `#A16207`); or soft blue breakdown card `#EFF6FF` + `#3B82F6` border |
+| **4. Bold Classroom Marker Headlines & Key Takeaways** | **`"marker"`** *(aliases `"patrick-hand"`, `"chalk"`, `"board-marker"`)* | `Patrick Hand` + `PennstanderMath` | `scale: 0.95–1.10` | LTR, `rotationDeg: -1.5` to `+1.5`, `left` or `center` | Deep board inks: `#1D4ED8` (Blue), `#0D9488` (Teal), `#15803D` (Green), `#B45309` (Amber) |
+| **5. Corner Stamps, Exam Badges & Word-Problem Clues** | **`"typewriter"`** *(aliases `"special-elite"`, `"stamp"`)* | `Special Elite` + `PennstanderMath` | `sizePt: 14.0–16.0` (`scale: 0.80–0.90`) | Stamp tilt `rotationDeg: -3.5` (or `0°` badge), `left` / `center` | Stamp badge: `#FFFFFF` text on `#1565C0` blue (`#0D47A1` border) or `#991B1B` crimson solid card; or `#1F2421` ink on `#FFFBEB` clue slip |
+
+### 4.3 Mixing Voices Inline on a Single Line (`spans[].form` & `tokenStyles[].form`)
+Inside `spans` or `tokenStyles` (targeting `\htmlId{tok_id}{...}`), set `"form"` to mix weights or voices cleanly without splitting a sentence:
+- **Weights / Styles:** `"regular"`, `"bold"`, `"italic"`, `"bold-italic"`, `"monospace"`, `"math"`
+- **Explicit Font Voices:** `"handwritten"` (`"natural"`), `"typeset"` (`"clean"`), `"casual"` (`"single-day"`), `"marker"` (`"patrick-hand"`), `"typewriter"` (`"special-elite"`)
 
 ---
 
@@ -108,8 +126,8 @@ Carbon's bottom bar has **3 groups** plus hardware keyboard shortcuts:
 - **Group 3:** `◀ Back` & `Next ▶` (`Shift + Left` / `Shift + Right` Arrow keys — switches **directly between questions**, while `(a)`/`(b)` pills switch between parts)
 
 Every question & solution compiled by Hydrogen structures each part (`a`, `b`, ...) with:
-1. **`questionStem`** (`pane: "left"`, `zone: "spine"`, plus any stimulus diagram/image in `zone: "diagram"`).
-2. **`steps[]` (`totalSteps: N`, `0`-indexed `activeStep`):** Concise, aligned vertical whiteboard steps (`anchor: { "mode": "below", "targetId": "...", "align": "equals" }`) streamed when Carbon emits `"step.navigated"` (`action`: `"first" | "back" | "next"`), with each step also storing **Question-Relative `sublevels` (`9 → 1`)** for adaptive SIGMA tutoring.
-3. **`substeps[]` per step (`breakdownAvailable: true`):** Finer pedagogical explanation cards (`zone: "scratch"`, soft `#EFF6FF` fill + `#3B82F6` border) streamed when Carbon emits `"step.navigated"` with `"action": "breakdown"` (`activeSubstep: 0, 1, ...`).
-4. **`finalAnswer`:** Crisp summary line or `#F0FDF4` green-bordered (`#16A34A`) answer card + `"kind": "check"` annotation revealed on the final step or immediately when Carbon emits `"answer.toggled"` (`revealed: true`).
+1. **`questionStem`** (`pane: "left"`, `zone: "spine"`, `"style": "typeset"` in `#0F172A`/`#1F2421`, optional `"typewriter"` corner stamp & `"handwritten"` `E.g.` example, plus any stimulus diagram/image in `zone: "diagram"`).
+2. **`steps[]` (`totalSteps: N`, `0`-indexed `activeStep`):** Natural `"style": "handwritten"` (`Pennstander` + `PennstanderMath`, `21.0 pt` base, `0°` upright) vertical whiteboard steps (`anchor: { "mode": "below", "targetId": "...", "offsetPt": [0, 12] }`) streamed when Carbon emits `"step.navigated"` (`action`: `"first" | "back" | "next"`), with each step also storing **Question-Relative `sublevels` (`9 → 1`)** for adaptive SIGMA tutoring.
+3. **`substeps[]` per step (`breakdownAvailable: true`):** Friendly `"style": "casual"` (`Single Day`, `scale: 0.88–0.95`, gentle `rotationDeg: -2.0..+1.5`) or `"typeset"` explanation cards (`zone: "scratch"`, soft `#EFF6FF` fill + `#3B82F6` border or `#FEF9C3` yellow check card + `#CA8A04` dashed border) streamed when Carbon emits `"step.navigated"` with `"action": "breakdown"`.
+4. **`finalAnswer`:** Crisp `"handwritten"` or `"marker"` / `"typeset"` `#15803D` summary line on a `#F0FDF4` green-bordered (`#16A34A`) answer card + `"kind": "check"` annotation revealed on the final step or immediately when Carbon emits `"answer.toggled"` (`revealed: true`).
 5. **Question & Part Sync (`chrome.update`):** Whenever loading or jumping to any question/part (`"catalog.itemSelected"`, `"part.selected"`, `"item.navigated"`, or direct tutor jump), always include `activeItemId`, `itemLabel` (`"Q4"`), `partTabs` (`[{"id":"a","label":"(a)"},{"id":"b","label":"(b)"}]` or `[]`), `activePartId`, `totalSteps`, `activeStep`, `activeSubstep`, `breakdownAvailable`, and `answerRevealed`.

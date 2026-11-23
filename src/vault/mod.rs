@@ -8,9 +8,9 @@ pub mod seed;
 use std::path::{Path, PathBuf};
 
 use memory_core_rs::{
-    CheckReport, CourseAsset, CourseAssetInput, CourseCatalogSnapshot, CoursePaper,
-    CoursePaperInput, CoursePaperSectionInput, CourseQuestion, CourseQuestionInput,
-    CourseStimulusInput, Manifest, Memory, Status, bundle,
+    CheckReport, CommentAttachmentBytes, CourseAsset, CourseAssetInput, CourseCatalogSnapshot,
+    CourseComment, CourseCommentInput, CoursePaper, CoursePaperInput, CoursePaperSectionInput,
+    CourseQuestion, CourseQuestionInput, CourseStimulusInput, Manifest, Memory, Status, bundle,
 };
 use tokio::sync::Mutex;
 
@@ -183,6 +183,69 @@ impl VaultManager {
         .await
     }
 
+    /// Read raw verified bytes of an embedded `L7` media asset.
+    pub async fn read_asset_bytes(&self, asset_id: &str) -> Result<Vec<u8>> {
+        self.with_memory(|mem| Ok(mem.read_course_asset_bytes(asset_id)?))
+            .await
+    }
+
+    /// List `L7` authoring/QA comments (`course_comments`), optionally filtered by `status`
+    /// (`"open"` | `"resolved"`) and/or `target_id`.
+    pub async fn list_comments(
+        &self,
+        status: Option<&str>,
+        target_id: Option<&str>,
+    ) -> Result<Vec<CourseComment>> {
+        self.with_memory(|mem| Ok(mem.list_course_comments(status, target_id)?))
+            .await
+    }
+
+    /// Fetch a single `L7` authoring comment (including attachment metadata) by `comment_id`.
+    pub async fn get_comment(&self, comment_id: &str) -> Result<Option<CourseComment>> {
+        self.with_memory(|mem| {
+            let all = mem.list_course_comments(None, None)?;
+            Ok(all.into_iter().find(|c| c.comment_id == comment_id))
+        })
+        .await
+    }
+
+    /// Insert or update an `L7` authoring comment (`course_comments`) and deduplicate any
+    /// new `Snap Board` / uploaded binary attachments in `blobs`. Returns `comment_id`.
+    pub async fn upsert_comment(
+        &self,
+        input: &CourseCommentInput,
+        attachments: &[CommentAttachmentBytes],
+    ) -> Result<String> {
+        self.with_memory(|mem| {
+            Ok(mem.upsert_course_comment(HYDROGEN_ACTOR, None, input, attachments)?)
+        })
+        .await
+    }
+
+    /// Mark an `L7` authoring comment as `"resolved"` with an optional `resolution_note`.
+    pub async fn resolve_comment(
+        &self,
+        comment_id: &str,
+        resolution_note: Option<&str>,
+    ) -> Result<bool> {
+        self.with_memory(|mem| {
+            Ok(mem.resolve_course_comment(HYDROGEN_ACTOR, None, comment_id, resolution_note)?)
+        })
+        .await
+    }
+
+    /// Permanently delete an `L7` authoring comment and garbage-collect unreferenced attachment blobs.
+    pub async fn delete_comment(&self, comment_id: &str) -> Result<bool> {
+        self.with_memory(|mem| Ok(mem.delete_course_comment(HYDROGEN_ACTOR, None, comment_id)?))
+            .await
+    }
+
+    /// Read raw verified bytes of a `course_comment_attachments` row by `attachment_id`.
+    pub async fn read_comment_attachment(&self, attachment_id: &str) -> Result<Vec<u8>> {
+        self.with_memory(|mem| Ok(mem.read_comment_attachment_bytes(attachment_id)?))
+            .await
+    }
+
     /// Convenience helper returning `(white_logo_data_uri, blue_logo_data_uri)` for `Gyara+`.
     pub async fn read_gyara_brand_logos(&self) -> Result<(String, String)> {
         let white = self.read_asset_data_uri(GYR_LOGO_WHITE_ID).await?;
@@ -216,10 +279,8 @@ mod tests {
 
     #[tokio::test]
     async fn initializes_gyara_maths_vault_embeds_logos_and_packs_bundle() -> Result<()> {
-        let tmp_dir = std::env::temp_dir().join(format!(
-            "hydrogen-vault-test-{}",
-            std::process::id()
-        ));
+        let tmp_dir =
+            std::env::temp_dir().join(format!("hydrogen-vault-test-{}", std::process::id()));
         if tmp_dir.exists() {
             std::fs::remove_dir_all(&tmp_dir)?;
         }
@@ -244,8 +305,16 @@ mod tests {
         assert_eq!(seeded.course_id, "GYR-MTH");
         assert_eq!(seeded.topic_count, 8);
         assert_eq!(seeded.question_type_count, 10);
-        assert!(seeded.embedded_assets.contains(&GYR_LOGO_WHITE_ID.to_string()));
-        assert!(seeded.embedded_assets.contains(&GYR_LOGO_BLUE_ID.to_string()));
+        assert!(
+            seeded
+                .embedded_assets
+                .contains(&GYR_LOGO_WHITE_ID.to_string())
+        );
+        assert!(
+            seeded
+                .embedded_assets
+                .contains(&GYR_LOGO_BLUE_ID.to_string())
+        );
 
         let status = vault.status().await?;
         assert_eq!(status.schema_version, "2.3.0");
@@ -256,6 +325,66 @@ mod tests {
         let (white_uri, blue_uri) = vault.read_gyara_brand_logos().await?;
         assert!(white_uri.starts_with("data:image/png;base64,"));
         assert!(blue_uri.starts_with("data:image/png;base64,"));
+
+        // Exercise L7 Snap Board comment + attachment CRUD lifecycle
+        let png_bytes = crate::ingest::RgbaBuffer {
+            width: 8,
+            height: 6,
+            data: vec![240u8; 8 * 6 * 4],
+        }
+        .encode_png()?;
+        let comment_id = vault
+            .upsert_comment(
+                &CourseCommentInput {
+                    comment_id: Some("cmt-vault-test-01".to_string()),
+                    target_kind: "question".to_string(),
+                    target_id: "GYR-MTH-P001-Q001".to_string(),
+                    part_id: Some("main".to_string()),
+                    step_id: Some("S01".to_string()),
+                    sublevel: Some(5),
+                    comment_kind: "fix".to_string(),
+                    comment_text: "Increase gap between bar model rows.".to_string(),
+                },
+                &[CommentAttachmentBytes {
+                    attachment_id: Some("att-vault-test-01".to_string()),
+                    source: "board-capture".to_string(),
+                    pane: Some("right".to_string()),
+                    mime_type: "image/png".to_string(),
+                    filename: Some("snap-1.png".to_string()),
+                    width_px: Some(8),
+                    height_px: Some(6),
+                    sort_order: 0,
+                    bytes: png_bytes.clone(),
+                }],
+            )
+            .await?;
+        assert_eq!(comment_id, "cmt-vault-test-01");
+
+        let open_comments = vault
+            .list_comments(Some("open"), Some("GYR-MTH-P001-Q001"))
+            .await?;
+        assert_eq!(open_comments.len(), 1);
+        assert_eq!(open_comments[0].attachments.len(), 1);
+        let read_back = vault.read_comment_attachment("att-vault-test-01").await?;
+        assert_eq!(read_back, png_bytes);
+
+        let fetched = vault.get_comment("cmt-vault-test-01").await?;
+        assert!(fetched.is_some());
+
+        assert!(
+            vault
+                .resolve_comment("cmt-vault-test-01", Some("Fixed spacing."))
+                .await?
+        );
+        let resolved_comment = vault
+            .get_comment("cmt-vault-test-01")
+            .await?
+            .ok_or_else(|| HydrogenError::Validation("expected resolved comment".into()))?;
+        assert_eq!(resolved_comment.status, "resolved");
+        assert_eq!(
+            resolved_comment.resolution_note.as_deref(),
+            Some("Fixed spacing.")
+        );
 
         let snap = vault.catalog_snapshot().await?;
         assert_eq!(

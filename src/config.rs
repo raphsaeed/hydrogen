@@ -65,7 +65,12 @@ impl HydrogenConfig {
             std::env::var(key)
                 .ok()
                 .filter(|v| !v.trim().is_empty())
-                .or_else(|| dotenv_map.get(key).cloned().filter(|v| !v.trim().is_empty()))
+                .or_else(|| {
+                    dotenv_map
+                        .get(key)
+                        .cloned()
+                        .filter(|v| !v.trim().is_empty())
+                })
         };
 
         let products_rel = toml_cfg
@@ -101,9 +106,7 @@ impl HydrogenConfig {
             .unwrap_or_else(|| "hydrogen-local".to_string());
 
         let lesson_key = get_var("HYDROGEN_LESSON_KEY").ok_or_else(|| {
-            HydrogenError::Config(
-                "missing HYDROGEN_LESSON_KEY (set in .env or environment)".into(),
-            )
+            HydrogenError::Config("missing HYDROGEN_LESSON_KEY (set in .env or environment)".into())
         })?;
 
         let gemini_api_key = get_var("GEMINI_API_KEY");
@@ -127,24 +130,34 @@ impl HydrogenConfig {
         self.products_dir.join(product)
     }
 
-    /// Git-tracked brand & visual assets directory for a product (`products/<product>/assets`).
+    /// Git-tracked shared brand & visual assets directory for a product (`products/<product>/assets`).
     pub fn product_assets_dir(&self, product: &str) -> PathBuf {
         self.product_dir(product).join("assets")
     }
 
-    /// Git-ignored raw input inbox directory (`products/<product>/inbox/<subject>`).
+    /// Self-contained sub-product directory (`products/<product>/<subject>`, e.g., `products/gyaraplus/maths`).
+    pub fn subject_dir(&self, product: &str, subject: &str) -> PathBuf {
+        self.product_dir(product).join(subject)
+    }
+
+    /// Git-ignored raw input inbox directory (`products/<product>/<subject>/inbox`).
     pub fn subject_inbox_dir(&self, product: &str, subject: &str) -> PathBuf {
-        self.product_dir(product).join("inbox").join(subject)
+        self.subject_dir(product, subject).join("inbox")
     }
 
-    /// Git-ignored processed archive & crops directory (`products/<product>/archive/<subject>`).
+    /// Git-ignored processed archive & crops directory (`products/<product>/<subject>/archive`).
     pub fn subject_archive_dir(&self, product: &str, subject: &str) -> PathBuf {
-        self.product_dir(product).join("archive").join(subject)
+        self.subject_dir(product, subject).join("archive")
     }
 
-    /// Git-ignored local source cross-reference path (`products/<product>/private-xref.json`).
-    pub fn private_xref_path(&self, product: &str) -> PathBuf {
-        self.product_dir(product).join("private-xref.json")
+    /// Git-ignored unified sub-product authoring & crop ledger (`products/<product>/<subject>/ledger.json`).
+    pub fn ledger_path(&self, product: &str, subject: &str) -> PathBuf {
+        self.subject_dir(product, subject).join("ledger.json")
+    }
+
+    /// Git-ignored static Warm-Paper QA & progress dashboard path (`products/<product>/<subject>/status.html`).
+    pub fn status_html_path(&self, product: &str, subject: &str) -> PathBuf {
+        self.subject_dir(product, subject).join("status.html")
     }
 
     /// Canonical `.raphs` vault stem for `(product, subject)` (e.g., `gyaraplus` + `maths` -> `gyara-maths`).
@@ -156,16 +169,18 @@ impl HydrogenConfig {
         format!("{prefix}-{subject}")
     }
 
-    /// Live SQLCipher working container path (`products/<product>/<stem>.sqlite`).
+    /// Live SQLCipher working container path (`products/<product>/<subject>/<stem>.sqlite`).
     pub fn vault_sqlite_path(&self, product: &str, subject: &str) -> PathBuf {
         let stem = Self::vault_stem(product, subject);
-        self.product_dir(product).join(format!("{stem}.sqlite"))
+        self.subject_dir(product, subject)
+            .join(format!("{stem}.sqlite"))
     }
 
-    /// Packed self-contained `.raphs` bundle path (`products/<product>/<stem>.raphs`).
+    /// Packed self-contained `.raphs` bundle path (`products/<product>/<subject>/<stem>.raphs`).
     pub fn vault_bundle_path(&self, product: &str, subject: &str) -> PathBuf {
         let stem = Self::vault_stem(product, subject);
-        self.product_dir(product).join(format!("{stem}.raphs"))
+        self.subject_dir(product, subject)
+            .join(format!("{stem}.raphs"))
     }
 }
 
@@ -235,6 +250,54 @@ mod tests {
             HydrogenConfig::vault_stem("gyaraplus", "non-verbal-reasoning"),
             "gyara-non-verbal-reasoning"
         );
-        assert_eq!(HydrogenConfig::vault_stem("gcse", "physics"), "gcse-physics");
+        assert_eq!(
+            HydrogenConfig::vault_stem("gcse", "physics"),
+            "gcse-physics"
+        );
+
+        let cfg = HydrogenConfig {
+            workspace_root: PathBuf::from("/ws"),
+            products_dir: PathBuf::from("/ws/products"),
+            rules_dir: PathBuf::from("/ws/rules"),
+            default_product: "gyaraplus".into(),
+            default_subject: "maths".into(),
+            bind_addr: "127.0.0.1:7430".into(),
+            carbon_ws_url: "ws://127.0.0.1:7420/carbon".into(),
+            device_id: "dev".into(),
+            lesson_key: "key".into(),
+            gemini_api_key: None,
+        };
+        assert_eq!(
+            cfg.product_assets_dir("gyaraplus"),
+            PathBuf::from("/ws/products/gyaraplus/assets")
+        );
+        assert_eq!(
+            cfg.subject_dir("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths")
+        );
+        assert_eq!(
+            cfg.subject_inbox_dir("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths/inbox")
+        );
+        assert_eq!(
+            cfg.subject_archive_dir("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths/archive")
+        );
+        assert_eq!(
+            cfg.ledger_path("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths/ledger.json")
+        );
+        assert_eq!(
+            cfg.status_html_path("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths/status.html")
+        );
+        assert_eq!(
+            cfg.vault_sqlite_path("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths/gyara-maths.sqlite")
+        );
+        assert_eq!(
+            cfg.vault_bundle_path("gyaraplus", "maths"),
+            PathBuf::from("/ws/products/gyaraplus/maths/gyara-maths.raphs")
+        );
     }
 }

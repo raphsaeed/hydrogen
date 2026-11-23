@@ -1,6 +1,8 @@
 //! Async `Carbon Protocol v0.1` WebSocket client (`ws://<host>:7420/carbon`) and catalog projector.
 
+pub mod bounds;
 pub mod catalog;
+pub mod feedback;
 pub mod preview;
 
 use std::collections::BTreeMap;
@@ -10,8 +12,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use carbon_protocol::{
     ActorRole, BoardStateSnapshot, CarbonCommand, CarbonEvent, CarbonEventEnvelope, ChromePatch,
-    ClientActor, ClientMessage, CommandAck, PROTOCOL_VERSION, ServerMessage, SetThemeParams,
-    ThemeId, decode_server_message, encode_client_message,
+    ClientActor, ClientInteraction, ClientMessage, CommandAck, NormalizedRect, PROTOCOL_VERSION,
+    PaneId, ServerMessage, SetThemeParams, ThemeId, decode_server_message, encode_client_message,
 };
 use futures_util::{SinkExt, StreamExt};
 use memory_core_rs::CourseCatalogSnapshot;
@@ -20,8 +22,16 @@ use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::base64_util::{decode_base64, read_png_dimensions};
 use crate::carbon::catalog::project_full_stage_catalog;
 use crate::error::{HydrogenError, Result};
+
+pub use bounds::{BoundsCheckReport, BoundsIssue, BoundsIssueKind, inspect_board_bounds};
+pub use feedback::{
+    WatchPersistenceOutcome, course_comment_to_feedback_entry, handle_watch_persistence_event,
+    infer_comment_target_kind, load_feedback_entries_for_item, persist_feedback_entry_to_vault,
+    sync_item_feedback_to_carbon,
+};
 
 /// Handshake metadata captured from Carbon's initial `board.ready` frame upon WebSocket connection.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +40,16 @@ pub struct BoardReadyInfo {
     pub gpu_backend: String,
     pub viewport_px: [u32; 2],
     pub scale_factor: f32,
+}
+
+/// Decoded PNG board snapshot returned by Carbon's `captureBoard` (`ServerMessage::Capture`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapturedBoardPng {
+    pub mime_type: String,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub bounds: NormalizedRect,
+    pub png_bytes: Vec<u8>,
 }
 
 type PendingMap = Arc<Mutex<BTreeMap<String, oneshot::Sender<ServerMessage>>>>;
@@ -49,11 +69,7 @@ pub struct CarbonClient {
 impl CarbonClient {
     /// Connect to `ws_url` (e.g. `ws://127.0.0.1:7420/carbon`), await Carbon's `board.ready` handshake,
     /// and spawn lightweight reader/writer tasks for request correlation and live event streaming.
-    pub async fn connect(
-        ws_url: &str,
-        device_id: &str,
-        connect_timeout: Duration,
-    ) -> Result<Self> {
+    pub async fn connect(ws_url: &str, device_id: &str, connect_timeout: Duration) -> Result<Self> {
         let (ws_stream, _) = timeout(connect_timeout, connect_async(ws_url))
             .await
             .map_err(|_| {
@@ -88,8 +104,9 @@ impl CarbonClient {
             }
         };
 
-        let first_msg = decode_server_message(&ready_text)
-            .map_err(|e| HydrogenError::CarbonProtocol(format!("{}: {}", e.code_str(), e.message)))?;
+        let first_msg = decode_server_message(&ready_text).map_err(|e| {
+            HydrogenError::CarbonProtocol(format!("{}: {}", e.code_str(), e.message))
+        })?;
 
         let board_ready = match first_msg {
             ServerMessage::Event(CarbonEventEnvelope {
@@ -197,8 +214,8 @@ impl CarbonClient {
     }
 
     async fn request_reply(&self, req_id: String, msg: &ClientMessage) -> Result<ServerMessage> {
-        let payload = encode_client_message(msg)
-            .map_err(|e| HydrogenError::CarbonProtocol(e.message))?;
+        let payload =
+            encode_client_message(msg).map_err(|e| HydrogenError::CarbonProtocol(e.message))?;
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(req_id.clone(), tx);
 
@@ -262,6 +279,83 @@ impl CarbonClient {
             ServerMessage::State { snapshot, .. } => Ok(snapshot),
             other => Err(HydrogenError::CarbonProtocol(format!(
                 "expected state snapshot reply, received {other:?}"
+            ))),
+        }
+    }
+
+    /// Capture a deterministic PNG snapshot of the board (`pane`: `None` for full stage, or
+    /// `Some(PaneId::Right)` / `Some(PaneId::Left)`), decoding `ServerMessage::Capture` base64 PNG bytes.
+    pub async fn capture_board(
+        &self,
+        pane: Option<PaneId>,
+        crop_to_user_ink: bool,
+        include_chrome: bool,
+    ) -> Result<CapturedBoardPng> {
+        let req_id = self.next_id("capture");
+        let msg = ClientMessage::CaptureBoard {
+            version: PROTOCOL_VERSION.to_string(),
+            id: Some(req_id.clone()),
+            pane,
+            crop_to_user_ink,
+            include_chrome,
+        };
+        match self.request_reply(req_id, &msg).await? {
+            ServerMessage::Capture {
+                mime_type,
+                width_px,
+                height_px,
+                bounds,
+                data_base64,
+                ..
+            } => {
+                let png_bytes = decode_base64(&data_base64)?;
+                if png_bytes.is_empty() {
+                    return Err(HydrogenError::CarbonProtocol(
+                        "Carbon returned empty captureBoard payload".into(),
+                    ));
+                }
+                if mime_type == "image/png" && read_png_dimensions(&png_bytes).is_none() {
+                    return Err(HydrogenError::CarbonProtocol(
+                        "Carbon captureBoard payload lacked a valid PNG IHDR header".into(),
+                    ));
+                }
+                Ok(CapturedBoardPng {
+                    mime_type,
+                    width_px,
+                    height_px,
+                    bounds,
+                    png_bytes,
+                })
+            }
+            other => Err(HydrogenError::CarbonProtocol(format!(
+                "expected capture reply, received {other:?}"
+            ))),
+        }
+    }
+
+    /// Dispatch a simulated/bridged `ClientInteraction` (`saveComment`, `deleteComment`,
+    /// `requestCatalogAction`, `navigateStep`, etc.) and await Carbon's `CommandAck`.
+    pub async fn send_interaction(
+        &self,
+        actor: ClientActor,
+        interaction: ClientInteraction,
+    ) -> Result<CommandAck> {
+        let req_id = self.next_id("interact");
+        let msg = ClientMessage::Interact {
+            version: PROTOCOL_VERSION.to_string(),
+            id: Some(req_id.clone()),
+            actor,
+            timestamp_ms: Some(now_epoch_ms()),
+            interaction,
+        };
+        match self.request_reply(req_id, &msg).await? {
+            ServerMessage::Ack(ack) if ack.ok => Ok(ack),
+            ServerMessage::Ack(ack) => Err(HydrogenError::CarbonProtocol(format!(
+                "Carbon interaction rejected: {:?}",
+                ack.error
+            ))),
+            other => Err(HydrogenError::CarbonProtocol(format!(
+                "expected interaction ack, received {other:?}"
             ))),
         }
     }
@@ -535,11 +629,7 @@ mod tests {
                                     subject_count: cat.available_subjects.len(),
                                     paper_count: cat.papers.len(),
                                     topic_count: cat.topics.len(),
-                                    question_count: cat
-                                        .papers
-                                        .iter()
-                                        .map(|p| p.items.len())
-                                        .sum(),
+                                    question_count: cat.papers.iter().map(|p| p.items.len()).sum(),
                                 });
                             }
                         }
@@ -584,12 +674,8 @@ mod tests {
             }
         });
 
-        let client = CarbonClient::connect(
-            &ws_url,
-            "hydrogen-test-driver",
-            Duration::from_secs(2),
-        )
-        .await?;
+        let client =
+            CarbonClient::connect(&ws_url, "hydrogen-test-driver", Duration::from_secs(2)).await?;
         assert_eq!(client.board_ready().protocol_version, "0.1");
         assert_eq!(client.board_ready().gpu_backend, "Metal-Mock-120Hz");
 

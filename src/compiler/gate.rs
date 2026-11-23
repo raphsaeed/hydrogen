@@ -84,7 +84,12 @@ pub struct GateReport {
 }
 
 impl GateReport {
-    fn push(&mut self, category: GateCategory, location: impl Into<String>, message: impl Into<String>) {
+    fn push(
+        &mut self,
+        category: GateCategory,
+        location: impl Into<String>,
+        message: impl Into<String>,
+    ) {
         self.ok = false;
         self.issues.push(GateIssue {
             category,
@@ -360,9 +365,7 @@ fn check_theta_and_mcq(
                     report.push(
                         GateCategory::ThetaMath,
                         format!("solution.{part_loc}.usesPriorParts"),
-                        format!(
-                            "references unknown or non-preceding partId '{prior_id}'"
-                        ),
+                        format!("references unknown or non-preceding partId '{prior_id}'"),
                     );
                 }
             }
@@ -371,7 +374,9 @@ fn check_theta_and_mcq(
         if theta_enabled {
             // 1. Verify `answerKey.exactValue` parses & evaluates cleanly
             report.theta_checks_run += 1;
-            if let Err(err) = theta.eval_with_vars(&q_part.answer_key.exact_value, inherited_vars.clone()) {
+            if let Err(err) =
+                theta.eval_with_vars(&q_part.answer_key.exact_value, inherited_vars.clone())
+            {
                 report.push(
                     GateCategory::ThetaMath,
                     format!("question.{part_loc}.answerKey.exactValue"),
@@ -457,7 +462,8 @@ fn check_theta_and_mcq(
                             format!("question.{part_loc}.answerKey.correctChoiceId"),
                             "MCQ answerKey must specify correctChoiceId (e.g. 'A'..'E')",
                         );
-                        prior_exports.insert(q_part.part_id.clone(), sol_part.exported_exact.clone());
+                        prior_exports
+                            .insert(q_part.part_id.clone(), sol_part.exported_exact.clone());
                         continue;
                     };
 
@@ -467,9 +473,12 @@ fn check_theta_and_mcq(
                         report.push(
                             GateCategory::ThetaMath,
                             format!("question.{part_loc}.answerKey.correctChoiceId"),
-                            format!("correctChoiceId '{correct_id}' is not among choices {actual_ids:?}"),
+                            format!(
+                                "correctChoiceId '{correct_id}' is not among choices {actual_ids:?}"
+                            ),
                         );
-                        prior_exports.insert(q_part.part_id.clone(), sol_part.exported_exact.clone());
+                        prior_exports
+                            .insert(q_part.part_id.clone(), sol_part.exported_exact.clone());
                         continue;
                     };
 
@@ -522,7 +531,8 @@ fn check_theta_and_mcq(
                                     .unwrap_or_else(|| extract_math_from_choice_label(&c.label))
                             })
                             .collect();
-                        let expr_refs: Vec<&str> = expr_strings.iter().map(String::as_str).collect();
+                        let expr_refs: Vec<&str> =
+                            expr_strings.iter().map(String::as_str).collect();
                         report.theta_checks_run += 1;
                         match theta.verify_mcq_options(&expr_refs, &q_part.answer_key.exact_value) {
                             Ok(matched_idx) => {
@@ -680,7 +690,10 @@ fn run_single_theta_check(
                     .or_else(|| out.get("exact").and_then(Value::as_str));
                 match actual_opt {
                     Some(actual) => {
-                        if !theta.expressions_equivalent(actual, expected).unwrap_or(false) {
+                        if !theta
+                            .expressions_equivalent(actual, expected)
+                            .unwrap_or(false)
+                        {
                             report.push(
                                 GateCategory::ThetaMath,
                                 loc,
@@ -850,7 +863,10 @@ fn check_carbon_and_katex(
                 report.push(
                     GateCategory::CarbonSchema,
                     &loc,
-                    format!("leftPaneCarbonCommands scene.write must target `pane: \"left\"`, got {:?}", w.pane),
+                    format!(
+                        "leftPaneCarbonCommands scene.write must target `pane: \"left\"`, got {:?}",
+                        w.pane
+                    ),
                 );
             }
             if w.style == MathRenderStyle::Typeset {
@@ -952,7 +968,9 @@ fn validate_carbon_command(
                 report.push(
                     GateCategory::WarmPaperTheme,
                     loc,
-                    format!("surface backgroundColor '{bg}' violates Warm-Paper light canvas rules"),
+                    format!(
+                        "surface backgroundColor '{bg}' violates Warm-Paper light canvas rules"
+                    ),
                 );
             }
         }
@@ -970,7 +988,11 @@ fn validate_carbon_command(
         }
         CarbonCommand::Write(w) => {
             if w.id.trim().is_empty() {
-                report.push(GateCategory::CarbonSchema, loc, "scene.write `id` must not be empty");
+                report.push(
+                    GateCategory::CarbonSchema,
+                    loc,
+                    "scene.write `id` must not be empty",
+                );
             }
             validate_anchor_target(&w.anchor, loc, sym, report);
 
@@ -984,7 +1006,9 @@ fn validate_carbon_command(
             if is_substep_breakdown
                 && !matches!(
                     w.style,
-                    MathRenderStyle::Casual | MathRenderStyle::Handwritten | MathRenderStyle::Typeset
+                    MathRenderStyle::Casual
+                        | MathRenderStyle::Handwritten
+                        | MathRenderStyle::Typeset
                 )
             {
                 report.push(
@@ -1053,7 +1077,11 @@ fn validate_carbon_command(
                     }
                 }
                 if let Some(border) = card.border_color.as_deref() {
-                    validate_border_or_ink_color(border, &format!("{loc}.card.borderColor"), report);
+                    validate_border_or_ink_color(
+                        border,
+                        &format!("{loc}.card.borderColor"),
+                        report,
+                    );
                 }
                 if let Some(hc) = card.header_color.as_deref() {
                     validate_border_or_ink_color(hc, &format!("{loc}.card.headerColor"), report);
@@ -1123,7 +1151,11 @@ fn validate_carbon_command(
         }
         CarbonCommand::Place2D(p) => {
             if p.id.trim().is_empty() {
-                report.push(GateCategory::CarbonSchema, loc, "scene.place2D `id` must not be empty");
+                report.push(
+                    GateCategory::CarbonSchema,
+                    loc,
+                    "scene.place2D `id` must not be empty",
+                );
             }
             validate_anchor_target(&p.anchor, loc, sym, report);
             inspect_spec_json(&p.spec, &format!("{loc}.spec"), report);
@@ -1132,7 +1164,11 @@ fn validate_carbon_command(
         }
         CarbonCommand::Place3D(p) => {
             if p.id.trim().is_empty() {
-                report.push(GateCategory::CarbonSchema, loc, "scene.place3D `id` must not be empty");
+                report.push(
+                    GateCategory::CarbonSchema,
+                    loc,
+                    "scene.place3D `id` must not be empty",
+                );
             }
             validate_anchor_target(&p.anchor, loc, sym, report);
             inspect_spec_json(&p.spec, &format!("{loc}.spec"), report);
@@ -1249,7 +1285,10 @@ fn validate_carbon_command(
                 report.push(
                     GateCategory::CarbonSchema,
                     format!("{loc}.targetId"),
-                    format!("edit.modify targetId '{}' referenced before creation", m.target_id),
+                    format!(
+                        "edit.modify targetId '{}' referenced before creation",
+                        m.target_id
+                    ),
                 );
             }
             inspect_spec_json(&m.patch, &format!("{loc}.patch"), report);
@@ -1270,7 +1309,10 @@ fn validate_carbon_command(
                 report.push(
                     GateCategory::CarbonSchema,
                     format!("{loc}.targetId"),
-                    format!("focus.scale targetId '{}' referenced before creation", sc.target_id),
+                    format!(
+                        "focus.scale targetId '{}' referenced before creation",
+                        sc.target_id
+                    ),
                 );
             }
         }
@@ -1352,7 +1394,9 @@ fn validate_anchor_target(
 
 fn validate_png_logo(logo: &str, loc: &str, report: &mut GateReport) {
     let lower = logo.trim().to_ascii_lowercase();
-    if lower.contains("svg") || !(lower.starts_with("data:image/png;base64,") || lower.ends_with(".png")) {
+    if lower.contains("svg")
+        || !(lower.starts_with("data:image/png;base64,") || lower.ends_with(".png"))
+    {
         report.push(
             GateCategory::WarmPaperTheme,
             loc,
@@ -1362,10 +1406,7 @@ fn validate_png_logo(logo: &str, loc: &str, report: &mut GateReport) {
 }
 
 fn is_semantic_token(color: &str) -> bool {
-    matches!(
-        color,
-        "c1" | "c2" | "c3" | "c4" | "c5" | "c6" | "c7" | "c8"
-    )
+    matches!(color, "c1" | "c2" | "c3" | "c4" | "c5" | "c6" | "c7" | "c8")
 }
 
 /// Approved high-contrast `c1..c8` & curated voice ink hexes (`docs/carbon-visual-theme.md` §3–§4).
@@ -1611,8 +1652,10 @@ fn inspect_spec_json(val: &Value, loc: &str, report: &mut GateReport) {
                     validate_border_or_ink_color(c, &child_loc, report);
                 }
 
-                if matches!(k.as_str(), "label" | "text" | "totalLabel" | "xLabel" | "yLabel" | "caption")
-                    && let Some(txt) = v.as_str()
+                if matches!(
+                    k.as_str(),
+                    "label" | "text" | "totalLabel" | "xLabel" | "yLabel" | "caption"
+                ) && let Some(txt) = v.as_str()
                 {
                     check_katex_text(txt, &child_loc, report);
                 }
@@ -1764,16 +1807,7 @@ fn detect_ascii_math_leak(prose: &str) -> Option<String> {
     let lower = cleaned.to_ascii_lowercase();
 
     for pat in [
-        "sqrt(",
-        "cbrt(",
-        "!=",
-        "<=",
-        ">=",
-        "\\frac",
-        "\\times",
-        "\\div",
-        "\\htmlid",
-        "\\pounds",
+        "sqrt(", "cbrt(", "!=", "<=", ">=", "\\frac", "\\times", "\\div", "\\htmlid", "\\pounds",
     ] {
         if lower.contains(pat) {
             return Some(pat.to_string());
@@ -1942,7 +1976,11 @@ fn check_pedagogy_and_clean_room(
                 report.push(
                     GateCategory::Pedagogy,
                     format!("{step_loc}.stepNumber"),
-                    format!("expected stepNumber {}, got {}", s_idx + 1, step.step_number),
+                    format!(
+                        "expected stepNumber {}, got {}",
+                        s_idx + 1,
+                        step.step_number
+                    ),
                 );
             }
             if step.step_goal.trim().is_empty() {
@@ -2048,6 +2086,8 @@ fn check_clean_room_text(text: &str, loc: &str, report: &mut GateReport) {
         ".pdf",
         "inbox/",
         "archive/",
+        "ledger.json",
+        "status.html",
         "private-xref",
         "practice-paper-",
         "north london",
@@ -2309,13 +2349,19 @@ mod tests {
         bad_mcq.question.parts[0].answer_key.exact_value = "57.6".into();
         let rep = verify_question_package(&bad_mcq, Some(&rules));
         assert!(!rep.ok);
-        assert!(rep.issues.iter().any(|i| i.category == GateCategory::ThetaMath));
+        assert!(
+            rep.issues
+                .iter()
+                .any(|i| i.category == GateCategory::ThetaMath)
+        );
 
         // 2. Raw ASCII math leak + duplicate `✓` in `"kind": "check"` + thick stroke > 2.2 pt + dark card fill
         let mut bad_visual = sample_valid_package()?;
         bad_visual.question.stem_markdown_katex = "Solve x^2 + 3/5 = 10.".into();
-        bad_visual.solution.parts[0].final_answer.carbon_commands.push(
-            serde_json::from_value(serde_json::json!({
+        bad_visual.solution.parts[0]
+            .final_answer
+            .carbon_commands
+            .push(serde_json::from_value(serde_json::json!({
                 "op": "focus.annotate",
                 "params": {
                     "id": "dup_chk",
@@ -2324,8 +2370,7 @@ mod tests {
                     "color": "#FFFF00",
                     "label": "Verified ✓"
                 }
-            }))?,
-        );
+            }))?);
         bad_visual.solution.parts[0].steps[0]
             .sublevels
             .get_mut(&7)
@@ -2342,7 +2387,11 @@ mod tests {
 
         let vrep = verify_question_package(&bad_visual, Some(&rules));
         assert!(!vrep.ok);
-        assert!(vrep.issues.iter().any(|i| i.category == GateCategory::KatexDiscipline));
+        assert!(
+            vrep.issues
+                .iter()
+                .any(|i| i.category == GateCategory::KatexDiscipline)
+        );
         assert!(
             vrep.issues
                 .iter()
@@ -2361,8 +2410,16 @@ mod tests {
         bad_ped.solution.parts[0].steps[0].sublevels.insert(5, l7);
         let prep = verify_question_package(&bad_ped, Some(&rules));
         assert!(!prep.ok);
-        assert!(prep.issues.iter().any(|i| i.category == GateCategory::Pedagogy));
-        assert!(prep.issues.iter().any(|i| i.category == GateCategory::CleanRoom));
+        assert!(
+            prep.issues
+                .iter()
+                .any(|i| i.category == GateCategory::Pedagogy)
+        );
+        assert!(
+            prep.issues
+                .iter()
+                .any(|i| i.category == GateCategory::CleanRoom)
+        );
 
         Ok(())
     }

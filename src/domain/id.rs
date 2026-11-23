@@ -145,7 +145,9 @@ impl UniversalId {
             return Err(HydrogenError::Validation("paper_no must be >= 1".into()));
         }
         if replica == Some(0) {
-            return Err(HydrogenError::Validation("replica number must be >= 1".into()));
+            return Err(HydrogenError::Validation(
+                "replica number must be >= 1".into(),
+            ));
         }
         Ok(Self {
             product_code: product_code.to_string(),
@@ -189,7 +191,7 @@ impl UniversalId {
         }
     }
 
-    /// Map canonical subject directory slug (`maths`, `english`, `verbal-reasoning`, `non-verbal-reasoning`, `physics`) to its ID prefix.
+    /// Map canonical subject directory slug (`maths`, `english`, `verbal-reasoning`, `non-verbal-reasoning`, `physics`, etc.) to its ID prefix.
     pub fn subject_prefix_for_slug(subject_slug: &str) -> &'static str {
         match subject_slug {
             "maths" => "MTH",
@@ -197,6 +199,13 @@ impl UniversalId {
             "verbal-reasoning" => "VR",
             "non-verbal-reasoning" => "NVR",
             "physics" => "PHY",
+            "chemistry" => "CHM",
+            "biology" => "BIO",
+            "computer-science" => "CS",
+            "history" => "HIS",
+            "geography" => "GEO",
+            "economics" => "ECO",
+            "further-maths" => "FM",
             _ => "GEN",
         }
     }
@@ -242,9 +251,7 @@ impl UniversalId {
     /// Return a copy with an item-level question replica suffix (`-R<nn>`).
     pub fn with_question_replica(&self, replica_no: u32) -> Result<Self> {
         if replica_no == 0 {
-            return Err(HydrogenError::Validation(
-                "replica_no must be >= 1".into(),
-            ));
+            return Err(HydrogenError::Validation("replica_no must be >= 1".into()));
         }
         let mut next = self.clone();
         match &mut next.item {
@@ -447,10 +454,7 @@ fn parse_container(tail: &[&str], full_raw: &str) -> Result<(ContainerSegment, u
     // 1. Paper: `P001` or `P001_R01`
     if let Some(rest) = head.strip_prefix('P') {
         let (p_digits, rep_opt) = match rest.split_once("_R") {
-            Some((p, r)) => (
-                p,
-                Some(parse_positive_u32(r, "paper_replica", full_raw)?),
-            ),
+            Some((p, r)) => (p, Some(parse_positive_u32(r, "paper_replica", full_raw)?)),
             None => (rest, None),
         };
         let number = parse_positive_u32(p_digits, "paper_number", full_raw)?;
@@ -671,7 +675,11 @@ mod tests {
             ("GYR-MTH-T_RAT01-C01", false, Some("GYR-MTH-T_RAT01")),
             ("GYR-MTH-QT-ALG-WORD", false, None),
             ("GYR-MTH-P001-Q014:a:S01:L09", false, Some("GYR-MTH-P001")),
-            ("GCSE-PHY-P002-Q005:main:S03:L01", false, Some("GCSE-PHY-P002")),
+            (
+                "GCSE-PHY-P002-Q005:main:S03:L01",
+                false,
+                Some("GCSE-PHY-P002"),
+            ),
         ];
 
         for (raw, expected_replica, expected_container_for_item) in cases {
@@ -688,7 +696,10 @@ mod tests {
 
         let q = UniversalId::paper_question("GYR", "MTH", 1, 14)?;
         assert_eq!(q.to_string(), "GYR-MTH-P001-Q014");
-        assert_eq!(q.with_question_replica(2)?.to_string(), "GYR-MTH-P001-Q014-R02");
+        assert_eq!(
+            q.with_question_replica(2)?.to_string(),
+            "GYR-MTH-P001-Q014-R02"
+        );
         assert_eq!(
             q.with_sub_address("a", Some(1), Some(9))?.to_string(),
             "GYR-MTH-P001-Q014:a:S01:L09"

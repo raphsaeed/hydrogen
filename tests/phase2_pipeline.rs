@@ -384,7 +384,7 @@ async fn phase2_end_to_end_slice_verify_upsert_preview_and_pack() -> Result<()> 
     if tmp.exists() {
         std::fs::remove_dir_all(&tmp)?;
     }
-    std::fs::create_dir_all(tmp.join("products/gyaraplus/inbox/maths"))?;
+    std::fs::create_dir_all(tmp.join("products/gyaraplus/maths/inbox"))?;
     std::fs::create_dir_all(tmp.join("products/gyaraplus/assets"))?;
 
     // Copy brand PNGs into temp workspace
@@ -412,7 +412,7 @@ async fn phase2_end_to_end_slice_verify_upsert_preview_and_pack() -> Result<()> 
     let rulebook = RuleLoader::new(&cfg.rules_dir).load("gyaraplus", "maths", None)?;
     assert_eq!(rulebook.frontmatter.course_id, "GYR-MTH");
 
-    // 2. Slice a synthetic PNG sheet into `archive/` + `private-xref.json`
+    // 2. Slice a synthetic PNG sheet into `archive/` + `ledger.json`
     let mut sheet_rgba = vec![255u8; 600 * 400 * 4];
     for y in 80..200 {
         for x in 50..550 {

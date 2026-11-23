@@ -1,23 +1,28 @@
 //! Unified `hydrogen` CLI entrypoint (zero external argument-parser crates).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use carbon_protocol::{
     BoardStateSnapshot, CarbonCommand, CarbonEvent, CarbonEventEnvelope, CatalogSelectionKind,
-    CatalogSnapshotSummary, ChromeSnapshot, ChromeVisibility, ClientMessage, CommandAck,
-    DualTimersSnapshot, ImportantIconStyle, LayoutMode, LayoutSnapshot, LoupeSnapshot,
-    NormalizedRect, OpticsSnapshot, PROTOCOL_VERSION, ProgressStatus, ReactiveStateSnapshot,
-    ReferenceViewMode, ReminderInterval, ServerMessage, SplitOrientation, SurfaceSpec,
-    SurfacesSnapshot, ThemeId, TimerMode, TimerSnapshot, UserInkSummary, decode_client_message,
-    encode_server_message,
+    CatalogSnapshotSummary, ChromeSnapshot, ChromeVisibility, ClientInteraction, ClientMessage,
+    CommandAck, DualTimersSnapshot, ImportantIconStyle, LayoutMode, LayoutSnapshot, LoupeSnapshot,
+    NormalizedRect, OpticsSnapshot, PROTOCOL_VERSION, PaneId, ProgressStatus,
+    ReactiveStateSnapshot, ReferenceViewMode, ReminderInterval, ServerMessage, SetFeedbackPayload,
+    SplitOrientation, SurfaceSpec, SurfacesSnapshot, ThemeId, TimerMode, TimerSnapshot,
+    UserInkSummary, decode_client_message, encode_server_message,
 };
 use futures_util::{SinkExt, StreamExt};
-use hydrogen::carbon::CarbonClient;
+use hydrogen::base64_util::{encode_base64, read_png_dimensions};
 use hydrogen::carbon::catalog::project_full_stage_catalog;
 use hydrogen::carbon::preview::{
-    PreviewSelection, apply_interactive_event, build_question_preview_batch,
+    PreviewSelection, apply_interactive_event, build_package_preview_batch,
+    build_question_preview_batch, force_instant_speed,
+};
+use hydrogen::carbon::{
+    CarbonClient, WatchPersistenceOutcome, handle_watch_persistence_event, inspect_board_bounds,
+    load_feedback_entries_for_item,
 };
 use hydrogen::compiler::{verify_blueprints, verify_question_package};
 use hydrogen::config::HydrogenConfig;
@@ -27,14 +32,18 @@ use hydrogen::domain::{
 };
 use hydrogen::error::{HydrogenError, Result};
 use hydrogen::ingest::{
-    CropBox, CropSpec, DEFAULT_RENDER_DPI, NormalizedBBox, PixelBBox, SliceMode, SlicePaperRequest,
-    slice_paper,
+    CropBox, CropSpec, DEFAULT_RENDER_DPI, NormalizedBBox, PixelBBox, ProductLedger, RgbaBuffer,
+    SliceMode, SlicePaperRequest, build_subject_status_report, discover_product_subjects,
+    format_terminal_status, refresh_subject_ledger_and_optional_html, slice_paper,
+    subject_slug_for_prefix, write_status_html,
 };
 use hydrogen::rules::RuleLoader;
 use hydrogen::theta::{StagePresetConfig, ThetaService};
 use hydrogen::vault::VaultManager;
 use hydrogen::vault::seed::{GYR_LOGO_BLUE_ID, GYR_LOGO_WHITE_ID};
-use memory_core_rs::{CoursePaperInput, CoursePaperSectionInput, CourseStimulusInput};
+use memory_core_rs::{
+    CourseAssetInput, CoursePaperInput, CoursePaperSectionInput, CourseStimulusInput,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -58,14 +67,18 @@ async fn run_cli() -> Result<()> {
 
     match subcmd {
         "doctor" => cmd_doctor(&args[1..]).await,
+        "status" => cmd_status(&args[1..]).await,
         "init-vault" => cmd_init_vault(&args[1..]).await,
-        "slice-paper" => cmd_slice_paper(&args[1..]),
+        "slice-paper" => cmd_slice_paper(&args[1..]).await,
         "theta" => cmd_theta(&args[1..]),
         "verify-question" => cmd_verify_question(&args[1..]),
         "upsert-question" => cmd_upsert_question(&args[1..]).await,
         "upsert-paper" => cmd_upsert_paper(&args[1..]).await,
+        "put-asset" => cmd_put_asset(&args[1..]).await,
+        "comments" => cmd_comments(&args[1..]).await,
         "catalog" => cmd_catalog(&args[1..]).await,
         "preview-carbon" => cmd_preview_carbon(&args[1..]).await,
+        "capture-carbon" => cmd_capture_carbon(&args[1..]).await,
         "pack" => cmd_pack(&args[1..]).await,
         "demo" => cmd_demo(&args[1..]).await,
         "-V" | "--version" | "version" => {
@@ -91,9 +104,11 @@ USAGE:
 
 SUBCOMMANDS:
     doctor [--carbon <ws-url>]              Verify 4-Tier Rules, Theta (<1ms), Vault (Schema 2.3.0), & Carbon WS
+    status [--product <slug>] [--subject <slug>] [--set-expected <paper-id> <count>] [--note <paper-id> \"...\"] [--html] [--json]
+                                            Inspect active sub-product inbox queue, ledger.json, paper/topic progress & status.html
     init-vault [--product P] [--subject S] [--pack]
                                             Initialize/seed L7 vault + PNG brand logo blobs
-    slice-paper <pdf-or-png> [OPTIONS]      Render pages & slice clean-room crops into archive/ + private-xref.json
+    slice-paper <pdf-or-png> [OPTIONS]      Render pages & slice clean-room crops into archive/ + ledger.json
         Options: [--paper-id GYR-MTH-P001] [--product P] [--subject S] [--dpi 180] [--pages 1-2]
                  [--pages-only | --auto | --id UID --page N --bbox x,y,w,h | --bbox-px x,y,w,h | --crops-json f.json]
                  [--move-inbox]
@@ -101,14 +116,24 @@ SUBCOMMANDS:
     verify-question <file.json> [OPTIONS]   Run deterministic Theta + Carbon + Warm-Paper + Clean-Room gates
         Options: [--product P] [--subject S] [--tier T] [--json]
     upsert-question <file.json> [OPTIONS]   Verify and atomically upsert question + L9..L1 solution into L7 vault
-        Options: [--product P] [--subject S] [--tier T] [--pack]
+        Options: [--product P] [--subject S] [--tier T] [--pack] [--html]
     upsert-paper <file.json> [OPTIONS]      Verify and atomically upsert paper, sections, stimuli & questions
-        Options: [--product P] [--subject S] [--tier T] [--pack]
+        Options: [--product P] [--subject S] [--tier T] [--pack] [--html]
+    put-asset <file.png|svg|mp4|mp3> --asset-id <ID> [OPTIONS]
+                                            Embed clean regenerated media asset into L7 course_media_assets + blobs
+        Options: [--product P] [--subject S] [--alt \"...\"] [--caption \"...\"] [--duration-ms N] [--pack]
+    comments [list | show <id> [--export-dir <dir>] | resolve <id> --note \"...\" | delete <id>] [OPTIONS]
+                                            Inspect, export attachments & source crops, or resolve Snap Board comments
+        Options: [--status open|resolved|all] [--target <id>] [--product P] [--subject S] [--json]
     catalog [--product P] [--subject S] [--carbon-json] [--full-logo]
                                             Inspect L7 CourseCatalogSnapshot or emit Carbon Full-Stage JSON
     preview-carbon [<question-id>] [OPTIONS] Push Split-Board question + (part, step, sublevel) live to Carbon
         Options: [--watch] [--catalog] [--part PART] [--step S01] [--level 9] [--substep 0]
                  [--reveal-answer] [--carbon <ws-url>] [--loopback] [--product P] [--subject S]
+    capture-carbon <question-id> [OPTIONS]  Render onto headless Carbon (:7420), verify token/object AABB bounds & save PNG
+        Options: [--part P] [--step S01] [--level 9] [--substep 0] [--reveal-answer]
+                 [--pane right|left|full] [--include-chrome] [--check-bounds] --out <snap.png>
+                 [--carbon <ws-url>] [--loopback] [--product P] [--subject S]
     pack [--product P] [--subject S] [--clean-out <out.raphs> --customer-key <key>]
                                             Pack live SQLCipher container into <stem>.raphs (or clean customer export)
     demo [--carbon <ws-url>] [--watch]      Run interactive end-to-end demo (Vault + Theta + Carbon WS)
@@ -135,8 +160,9 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
-/// Return the first positional argument (not starting with `--` and not the value of a known `--flag <val>`).
-fn first_positional<'a>(args: &'a [String], valued_flags: &[&str]) -> Option<&'a str> {
+/// Return all positional arguments (not starting with `-` and not values of `valued_flags`).
+fn positional_args<'a>(args: &'a [String], valued_flags: &[&str]) -> Vec<&'a str> {
+    let mut out = Vec::new();
     let mut skip_next = false;
     for arg in args {
         if skip_next {
@@ -150,9 +176,14 @@ fn first_positional<'a>(args: &'a [String], valued_flags: &[&str]) -> Option<&'a
         if arg.starts_with('-') {
             continue;
         }
-        return Some(arg.as_str());
+        out.push(arg.as_str());
     }
-    None
+    out
+}
+
+/// Return the first positional argument (not starting with `--` and not the value of a known `--flag <val>`).
+fn first_positional<'a>(args: &'a [String], valued_flags: &[&str]) -> Option<&'a str> {
+    positional_args(args, valued_flags).into_iter().next()
 }
 
 async fn open_vault_for(
@@ -326,7 +357,7 @@ async fn cmd_init_vault(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn cmd_slice_paper(args: &[String]) -> Result<()> {
+async fn cmd_slice_paper(args: &[String]) -> Result<()> {
     let cfg = HydrogenConfig::load(workspace_root()?)?;
     let valued_flags = [
         "--product",
@@ -409,8 +440,8 @@ fn cmd_slice_paper(args: &[String]) -> Result<()> {
         &cfg,
         &SlicePaperRequest {
             source_path: PathBuf::from(src_arg),
-            product,
-            subject,
+            product: product.clone(),
+            subject: subject.clone(),
             paper_id,
             dpi,
             page_range,
@@ -427,13 +458,23 @@ fn cmd_slice_paper(args: &[String]) -> Result<()> {
         summary.rendered_pages.len(),
         summary.sliced_items.len()
     );
-    println!("  archived_source : {}", summary.archived_source_path.display());
-    println!("  private_xref    : {}", summary.xref_path.display());
+    println!(
+        "  archived_source : {}",
+        summary.archived_source_path.display()
+    );
+    println!("  ledger          : {}", summary.ledger_path.display());
     for item in &summary.sliced_items {
         println!(
             "  crop            : {} -> page {} ({}x{} px) @ {}",
             item.universal_id, item.page, item.width_px, item.height_px, item.crop_path
         );
+    }
+
+    if let Some(html_path) =
+        refresh_subject_ledger_and_optional_html(&cfg, &product, &subject, has_flag(args, "--html"))
+            .await?
+    {
+        println!("  status_html     : {}", html_path.display());
     }
     Ok(())
 }
@@ -737,6 +778,15 @@ async fn cmd_upsert_question(args: &[String]) -> Result<()> {
             manifest.schema_version
         );
     }
+
+    // Drop single VaultManager handle BEFORE syncing sub-product ledger / status.html (Rule A6)
+    drop(vault);
+    if let Some(html_path) =
+        refresh_subject_ledger_and_optional_html(&cfg, &product, &subject, has_flag(args, "--html"))
+            .await?
+    {
+        println!("Refreshed status dashboard: {}", html_path.display());
+    }
     Ok(())
 }
 
@@ -822,7 +872,761 @@ async fn cmd_upsert_paper(args: &[String]) -> Result<()> {
             manifest.schema_version
         );
     }
+
+    // Drop single VaultManager handle BEFORE syncing sub-product ledger / status.html (Rule A6)
+    drop(vault);
+    if let Some(html_path) =
+        refresh_subject_ledger_and_optional_html(&cfg, &product, &subject, has_flag(args, "--html"))
+            .await?
+    {
+        println!("Refreshed status dashboard: {}", html_path.display());
+    }
     Ok(())
+}
+
+async fn cmd_status(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let mut product = cfg.default_product.clone();
+    let mut explicit_subject: Option<String> = None;
+    let mut emit_html = false;
+    let mut emit_json = false;
+    let mut expected_updates: Vec<(String, u32)> = Vec::new();
+    let mut note_updates: Vec<(String, String)> = Vec::new();
+
+    let mut idx = 0usize;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--product" => {
+                idx += 1;
+                product = args
+                    .get(idx)
+                    .cloned()
+                    .ok_or_else(|| HydrogenError::Config("--product requires <slug>".into()))?;
+            }
+            "--subject" => {
+                idx += 1;
+                explicit_subject =
+                    Some(args.get(idx).cloned().ok_or_else(|| {
+                        HydrogenError::Config("--subject requires <slug>".into())
+                    })?);
+            }
+            "--set-expected" => {
+                let paper_id = args.get(idx + 1).cloned().ok_or_else(|| {
+                    HydrogenError::Config(
+                        "usage: --set-expected <paper-id> <expected-question-count>".into(),
+                    )
+                })?;
+                let count_str = args.get(idx + 2).ok_or_else(|| {
+                    HydrogenError::Config(
+                        "usage: --set-expected <paper-id> <expected-question-count>".into(),
+                    )
+                })?;
+                let count = count_str.parse::<u32>().map_err(|_| {
+                    HydrogenError::Config(format!(
+                        "invalid integer '{count_str}' for --set-expected"
+                    ))
+                })?;
+                expected_updates.push((paper_id, count));
+                idx += 2;
+            }
+            "--note" => {
+                let paper_id = args.get(idx + 1).cloned().ok_or_else(|| {
+                    HydrogenError::Config("usage: --note <paper-id> \"<text>\"".into())
+                })?;
+                let text = args.get(idx + 2).cloned().ok_or_else(|| {
+                    HydrogenError::Config("usage: --note <paper-id> \"<text>\"".into())
+                })?;
+                note_updates.push((paper_id, text));
+                idx += 2;
+            }
+            "--html" => emit_html = true,
+            "--json" => emit_json = true,
+            unknown => {
+                return Err(HydrogenError::Config(format!(
+                    "unrecognized status option '{unknown}' (run `hydrogen --help`)"
+                )));
+            }
+        }
+        idx += 1;
+    }
+
+    for (pid, exp) in &expected_updates {
+        let parsed = UniversalId::parse(pid)?;
+        let paper_subj = subject_slug_for_prefix(&parsed.subject_code);
+        if let Some(ref req_subj) = explicit_subject
+            && req_subj != paper_subj
+        {
+            return Err(HydrogenError::Validation(format!(
+                "paper '{pid}' belongs to subject '{paper_subj}', which conflicts with --subject '{req_subj}'"
+            )));
+        }
+        let ledger_path = cfg.ledger_path(&product, paper_subj);
+        let mut ledger = ProductLedger::load_or_new(&ledger_path, &product, paper_subj)?;
+        ledger.set_expected_questions(pid, *exp)?;
+        ledger.save_atomic(&ledger_path)?;
+    }
+
+    for (pid, note) in &note_updates {
+        let parsed = UniversalId::parse(pid)?;
+        let paper_subj = subject_slug_for_prefix(&parsed.subject_code);
+        if let Some(ref req_subj) = explicit_subject
+            && req_subj != paper_subj
+        {
+            return Err(HydrogenError::Validation(format!(
+                "paper '{pid}' belongs to subject '{paper_subj}', which conflicts with --subject '{req_subj}'"
+            )));
+        }
+        let ledger_path = cfg.ledger_path(&product, paper_subj);
+        let mut ledger = ProductLedger::load_or_new(&ledger_path, &product, paper_subj)?;
+        ledger.add_paper_note(pid, note.clone())?;
+        ledger.save_atomic(&ledger_path)?;
+    }
+
+    let subjects_to_report = match explicit_subject {
+        Some(ref s) => vec![s.clone()],
+        None => discover_product_subjects(&cfg, &product)?,
+    };
+
+    if subjects_to_report.is_empty() {
+        if emit_json {
+            println!("[]");
+        } else {
+            println!(
+                "=== Hydrogen Status: `{product}` ===\nNo active sub-products under {}/ yet.",
+                cfg.product_dir(&product).display()
+            );
+        }
+        return Ok(());
+    }
+
+    let mut reports = Vec::with_capacity(subjects_to_report.len());
+    for subj in &subjects_to_report {
+        reports.push(build_subject_status_report(&cfg, &product, subj, emit_html).await?);
+    }
+
+    if emit_json {
+        if reports.len() == 1 {
+            println!("{}", serde_json::to_string_pretty(&reports[0])?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&reports)?);
+        }
+    } else {
+        for (i, rep) in reports.iter().enumerate() {
+            if i > 0 {
+                println!();
+            }
+            print!("{}", format_terminal_status(rep));
+        }
+    }
+
+    if emit_html {
+        for rep in &reports {
+            let html_path = write_status_html(&cfg, rep)?;
+            println!(
+                "\nGenerated Warm-Paper HTML dashboard: {}",
+                html_path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn cmd_put_asset(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = [
+        "--asset-id",
+        "--product",
+        "--subject",
+        "--alt",
+        "--caption",
+        "--duration-ms",
+    ];
+    let file_arg = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config(
+            "usage: hydrogen put-asset <file.png|svg|mp4|mp3> --asset-id <ID> [--alt \"...\"] [--caption \"...\"]"
+                .into(),
+        )
+    })?;
+    let asset_id = parse_flag_value(args, "--asset-id").ok_or_else(|| {
+        HydrogenError::Config("--asset-id <ID> is required for `put-asset`".into())
+    })?;
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let alt_text = parse_flag_value(args, "--alt");
+    let caption_text = parse_flag_value(args, "--caption");
+    let duration_ms = match parse_flag_value(args, "--duration-ms") {
+        Some(s) => Some(
+            s.parse::<i64>()
+                .map_err(|_| HydrogenError::Config(format!("invalid --duration-ms '{s}'")))?,
+        ),
+        None => None,
+    };
+    let should_pack = has_flag(args, "--pack");
+
+    validate_clean_asset_id(&asset_id)?;
+    if let Some(ref alt) = alt_text {
+        ensure_no_clean_room_leak(alt, "--alt")?;
+    }
+    if let Some(ref cap) = caption_text {
+        ensure_no_clean_room_leak(cap, "--caption")?;
+    }
+
+    let file_path = PathBuf::from(file_arg);
+    if !file_path.is_file() {
+        return Err(HydrogenError::Validation(format!(
+            "asset file does not exist: {}",
+            file_path.display()
+        )));
+    }
+    let bytes = std::fs::read(&file_path)?;
+    if bytes.is_empty() {
+        return Err(HydrogenError::Validation(format!(
+            "asset file is empty: {}",
+            file_path.display()
+        )));
+    }
+
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let (media_kind, mime_type) = classify_media_extension(&ext)?;
+
+    let (width_px, height_px) = if mime_type == "image/png" {
+        match read_png_dimensions(&bytes) {
+            Some((w, h)) => (Some(w), Some(h)),
+            None => {
+                return Err(HydrogenError::Validation(format!(
+                    "file '{}' has .png extension but lacks a valid PNG IHDR header",
+                    file_path.display()
+                )));
+            }
+        }
+    } else {
+        (None, None)
+    };
+
+    let clean_filename = format!("{asset_id}.{ext}");
+    let input = CourseAssetInput {
+        asset_id: asset_id.clone(),
+        media_kind: media_kind.to_string(),
+        mime_type: mime_type.to_string(),
+        original_filename: Some(clean_filename),
+        width_px,
+        height_px,
+        duration_ms,
+        alt_text,
+        caption_text,
+        captions_json: None,
+    };
+
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
+    let blob_id = vault.put_asset(&input, &bytes).await?;
+    let stored = vault.get_asset_info(&asset_id).await?.ok_or_else(|| {
+        HydrogenError::Validation(format!("stored asset '{asset_id}' missing after put_asset"))
+    })?;
+
+    println!(
+        "Embedded clean asset {} ({} · {} · {} B · sha256={} · blob={}) -> {}",
+        stored.asset_id,
+        stored.media_kind,
+        stored.mime_type,
+        stored.size_bytes,
+        &stored.sha256[..stored.sha256.len().min(16)],
+        blob_id,
+        vault.sqlite_path().display()
+    );
+
+    if should_pack {
+        let manifest = vault.pack_to_default_bundle().await?;
+        println!(
+            "Packed bundle: {} (schema v{})",
+            vault.bundle_path().display(),
+            manifest.schema_version
+        );
+    }
+    Ok(())
+}
+
+fn validate_clean_asset_id(asset_id: &str) -> Result<()> {
+    if asset_id.is_empty()
+        || asset_id.len() > 128
+        || !asset_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(HydrogenError::Validation(format!(
+            "invalid --asset-id '{asset_id}' (expected 1..=128 ASCII `[A-Za-z0-9_-]+`)"
+        )));
+    }
+    ensure_no_clean_room_leak(asset_id, "--asset-id")
+}
+
+fn ensure_no_clean_room_leak(text: &str, field: &str) -> Result<()> {
+    let lower = text.to_ascii_lowercase();
+    for forbidden in [
+        ".pdf",
+        "ledger.json",
+        "status.html",
+        "private-xref",
+        "inbox/",
+        "archive/",
+        "gl assessment",
+        "iseb",
+        "csse",
+        "aqa",
+        "edexcel",
+    ] {
+        if lower.contains(forbidden) {
+            return Err(HydrogenError::Validation(format!(
+                "clean-room violation in {field}: forbidden source token '{forbidden}'"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn classify_media_extension(ext: &str) -> Result<(&'static str, &'static str)> {
+    match ext {
+        "png" => Ok(("image", "image/png")),
+        "jpg" | "jpeg" => Ok(("image", "image/jpeg")),
+        "webp" => Ok(("image", "image/webp")),
+        "gif" => Ok(("image", "image/gif")),
+        "svg" => Ok(("svg", "image/svg+xml")),
+        "mp4" => Ok(("video", "video/mp4")),
+        "webm" => Ok(("video", "video/webm")),
+        "mov" => Ok(("video", "video/quicktime")),
+        "mp3" => Ok(("audio", "audio/mpeg")),
+        "wav" => Ok(("audio", "audio/wav")),
+        "ogg" => Ok(("audio", "audio/ogg")),
+        "m4a" => Ok(("audio", "audio/mp4")),
+        other => Err(HydrogenError::Config(format!(
+            "unsupported asset extension '.{other}' (expected png, jpg, webp, svg, mp4, webm, mp3, wav, ogg, m4a)"
+        ))),
+    }
+}
+
+async fn cmd_comments(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = [
+        "--product",
+        "--subject",
+        "--status",
+        "--target",
+        "--export-dir",
+        "--note",
+    ];
+    let pos = positional_args(args, &valued_flags);
+    let action = pos.first().copied().unwrap_or("list");
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let emit_json = has_flag(args, "--json");
+
+    let vault = open_vault_for(&cfg, &product, &subject).await?;
+
+    match action {
+        "list" => {
+            let status_raw = parse_flag_value(args, "--status").unwrap_or_else(|| "open".into());
+            let status_filter = match status_raw.as_str() {
+                "all" => None,
+                "open" | "pending" => Some("open"),
+                "resolved" | "done" => Some("resolved"),
+                other => {
+                    return Err(HydrogenError::Config(format!(
+                        "invalid --status '{other}' (expected open, resolved, or all)"
+                    )));
+                }
+            };
+            let target_filter = parse_flag_value(args, "--target");
+            let comments = vault
+                .list_comments(status_filter, target_filter.as_deref())
+                .await?;
+            if emit_json {
+                println!("{}", serde_json::to_string_pretty(&comments)?);
+            } else if comments.is_empty() {
+                println!(
+                    "No {} comments in {}.",
+                    status_filter.unwrap_or("stored"),
+                    vault.sqlite_path().display()
+                );
+            } else {
+                println!(
+                    "Comments in {} ({} match(es)):",
+                    vault.sqlite_path().display(),
+                    comments.len()
+                );
+                for c in &comments {
+                    println!(
+                        "  - {} [{} · {}] -> {}:{}{}{}{} ({} attachment(s)): {}",
+                        c.comment_id,
+                        c.status,
+                        c.comment_kind,
+                        c.target_kind,
+                        c.target_id,
+                        c.part_id
+                            .as_deref()
+                            .map(|p| format!(":{p}"))
+                            .unwrap_or_default(),
+                        c.step_id
+                            .as_deref()
+                            .map(|s| format!(":{s}"))
+                            .unwrap_or_default(),
+                        c.sublevel.map(|l| format!(":L{l:02}")).unwrap_or_default(),
+                        c.attachments.len(),
+                        c.comment_text
+                    );
+                }
+            }
+            Ok(())
+        }
+        "show" => {
+            let comment_id = pos.get(1).copied().ok_or_else(|| {
+                HydrogenError::Config(
+                    "usage: hydrogen comments show <comment-id> [--export-dir <dir>]".into(),
+                )
+            })?;
+            let comment = vault.get_comment(comment_id).await?.ok_or_else(|| {
+                HydrogenError::Validation(format!(
+                    "comment '{comment_id}' not found in {}",
+                    vault.sqlite_path().display()
+                ))
+            })?;
+
+            let ledger = ProductLedger::load_or_new(
+                &cfg.ledger_path(&product, &subject),
+                &product,
+                &subject,
+            )?;
+            let ledger_item = ledger.items.get(&comment.target_id);
+
+            if emit_json {
+                println!("{}", serde_json::to_string_pretty(&comment)?);
+            } else {
+                println!("Comment ID   : {}", comment.comment_id);
+                println!(
+                    "Status       : {} (kind={})",
+                    comment.status, comment.comment_kind
+                );
+                println!(
+                    "Target       : {}:{} (part={:?}, step={:?}, sublevel={:?})",
+                    comment.target_kind,
+                    comment.target_id,
+                    comment.part_id,
+                    comment.step_id,
+                    comment.sublevel
+                );
+                println!("Text         : {}", comment.comment_text);
+                if let Some(ref note) = comment.resolution_note {
+                    println!("Resolution   : {note}");
+                }
+                if let Some(item) = ledger_item
+                    && let Some(ref crop_rel) = item.crop_path
+                {
+                    println!(
+                        "Source Crop  : {} (page {:?}, dims={:?})",
+                        crop_rel, item.page, item.crop_dimensions
+                    );
+                }
+                println!("Attachments  : {}", comment.attachments.len());
+                for att in &comment.attachments {
+                    println!(
+                        "  - {} ({} · {} · {} B · {:?}x{:?} px · pane={:?})",
+                        att.attachment_id,
+                        att.source,
+                        att.mime_type,
+                        att.size_bytes,
+                        att.width_px,
+                        att.height_px,
+                        att.pane
+                    );
+                }
+            }
+
+            if let Some(export_dir_str) = parse_flag_value(args, "--export-dir") {
+                let export_dir = PathBuf::from(export_dir_str);
+                std::fs::create_dir_all(&export_dir)?;
+
+                let meta_path = export_dir.join("comment.json");
+                std::fs::write(&meta_path, serde_json::to_string_pretty(&comment)?)?;
+
+                for att in &comment.attachments {
+                    let bytes = vault.read_comment_attachment(&att.attachment_id).await?;
+                    let ext = match att.mime_type.as_str() {
+                        "image/png" => "png",
+                        "image/jpeg" => "jpg",
+                        "image/svg+xml" => "svg",
+                        "application/pdf" => "pdf",
+                        _ => "bin",
+                    };
+                    let safe_att = att.attachment_id.replace(['/', '\\', ':'], "_");
+                    let att_out = export_dir.join(format!("{safe_att}.{ext}"));
+                    std::fs::write(&att_out, bytes)?;
+                    println!("Exported attachment -> {}", att_out.display());
+                }
+
+                if let Some(item) = ledger_item
+                    && let Some(ref crop_rel) = item.crop_path
+                {
+                    let src_crop = cfg.subject_dir(&product, &subject).join(crop_rel);
+                    if src_crop.is_file() {
+                        let dst_crop =
+                            export_dir.join(format!("source-crop-{}.png", comment.target_id));
+                        std::fs::copy(&src_crop, &dst_crop)?;
+                        println!("Exported source crop -> {}", dst_crop.display());
+                    }
+                }
+
+                if comment.target_kind == "question"
+                    && let Some(cq) = vault.get_question(&comment.target_id).await?
+                {
+                    let q_out = export_dir.join(format!("{}-vault.json", comment.target_id));
+                    std::fs::write(&q_out, serde_json::to_string_pretty(&cq)?)?;
+                    println!("Exported vault question -> {}", q_out.display());
+                }
+            }
+            Ok(())
+        }
+        "resolve" => {
+            let comment_id = pos.get(1).copied().ok_or_else(|| {
+                HydrogenError::Config(
+                    "usage: hydrogen comments resolve <comment-id> [--note \"...\"]".into(),
+                )
+            })?;
+            let note = parse_flag_value(args, "--note");
+            let updated = vault.resolve_comment(comment_id, note.as_deref()).await?;
+            if !updated {
+                return Err(HydrogenError::Validation(format!(
+                    "comment '{comment_id}' not found in {}",
+                    vault.sqlite_path().display()
+                )));
+            }
+            println!(
+                "Resolved comment {comment_id}{}",
+                note.as_deref()
+                    .map(|n| format!(" (note: '{n}')"))
+                    .unwrap_or_default()
+            );
+            drop(vault);
+            let _ =
+                refresh_subject_ledger_and_optional_html(&cfg, &product, &subject, false).await?;
+            Ok(())
+        }
+        "delete" => {
+            let comment_id = pos.get(1).copied().ok_or_else(|| {
+                HydrogenError::Config("usage: hydrogen comments delete <comment-id>".into())
+            })?;
+            let removed = vault.delete_comment(comment_id).await?;
+            if !removed {
+                return Err(HydrogenError::Validation(format!(
+                    "comment '{comment_id}' not found in {}",
+                    vault.sqlite_path().display()
+                )));
+            }
+            println!("Deleted comment {comment_id}");
+            drop(vault);
+            let _ =
+                refresh_subject_ledger_and_optional_html(&cfg, &product, &subject, false).await?;
+            Ok(())
+        }
+        other => Err(HydrogenError::Config(format!(
+            "unknown `comments` action '{other}' (expected list, show, resolve, or delete)"
+        ))),
+    }
+}
+
+async fn cmd_capture_carbon(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let valued_flags = [
+        "--part",
+        "--step",
+        "--level",
+        "--substep",
+        "--pane",
+        "--out",
+        "--carbon",
+        "--product",
+        "--subject",
+    ];
+    let target_arg = first_positional(args, &valued_flags).ok_or_else(|| {
+        HydrogenError::Config(
+            "usage: hydrogen capture-carbon <question-id> [--part P] [--step S01] [--level 9] [--pane right|left] [--check-bounds] --out <snap.png>"
+                .into(),
+        )
+    })?;
+
+    let product =
+        parse_flag_value(args, "--product").unwrap_or_else(|| cfg.default_product.clone());
+    let subject =
+        parse_flag_value(args, "--subject").unwrap_or_else(|| cfg.default_subject.clone());
+    let part_id = parse_flag_value(args, "--part");
+    let step_id = parse_flag_value(args, "--step");
+    let level = match parse_flag_value(args, "--level") {
+        Some(s) => s
+            .parse::<u8>()
+            .map_err(|_| HydrogenError::Config(format!("invalid --level '{s}'")))?,
+        None => 9,
+    };
+    let substep = match parse_flag_value(args, "--substep") {
+        Some(s) => Some(
+            s.parse::<u32>()
+                .map_err(|_| HydrogenError::Config(format!("invalid --substep '{s}'")))?,
+        ),
+        None => None,
+    };
+    let reveal_answer = has_flag(args, "--reveal-answer");
+    let check_bounds = has_flag(args, "--check-bounds");
+    let include_chrome = has_flag(args, "--include-chrome");
+    let out_path = parse_flag_value(args, "--out").map(PathBuf::from);
+    let use_loopback = has_flag(args, "--loopback");
+    let explicit_carbon = parse_flag_value(args, "--carbon");
+
+    if out_path.is_none() && !check_bounds {
+        return Err(HydrogenError::Config(
+            "capture-carbon requires `--out <snap.png>` and/or `--check-bounds`".into(),
+        ));
+    }
+
+    let pane_opt = match parse_flag_value(args, "--pane").as_deref() {
+        None | Some("full") | Some("all") => None,
+        Some("right") => Some(PaneId::Right),
+        Some("left") => Some(PaneId::Left),
+        Some("board") => Some(PaneId::Board),
+        Some(other) => {
+            return Err(HydrogenError::Config(format!(
+                "invalid --pane '{other}' (expected right, left, or full)"
+            )));
+        }
+    };
+
+    let sel = PreviewSelection {
+        part_id,
+        step_id,
+        level,
+        substep,
+        reveal_answer,
+    };
+
+    let mut built =
+        load_preview_batch_for_target(&cfg, &product, &subject, target_arg, &sel).await?;
+    force_instant_speed(&mut built.commands);
+
+    let (target_url, mock_handle) = if use_loopback {
+        let (url, h) = spawn_demo_loopback_carbon().await?;
+        (url, Some(h))
+    } else {
+        let url = explicit_carbon.unwrap_or_else(|| cfg.carbon_ws_url.clone());
+        (url, None)
+    };
+
+    let client = CarbonClient::connect(&target_url, &cfg.device_id, Duration::from_secs(5)).await?;
+    let _ = client.send_batch(built.commands).await?;
+
+    if let Some(ref out) = out_path {
+        let captured = client
+            .capture_board(pane_opt, false, include_chrome)
+            .await?;
+        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(out, &captured.png_bytes)?;
+        println!(
+            "Captured {} (part='{}', step='{}', L{}) -> {} ({}x{} px, {} B)",
+            built.question_id,
+            built.part_id,
+            built.step_id,
+            built.level,
+            out.display(),
+            captured.width_px,
+            captured.height_px,
+            captured.png_bytes.len()
+        );
+    }
+
+    if check_bounds {
+        let state = client.get_state(true).await?;
+        let bounds_report = inspect_board_bounds(&state, pane_opt);
+        if bounds_report.ok {
+            println!(
+                "BOUNDS OK   : {} ({} objects · {} tokens verified with zero collisions/clipping)",
+                built.question_id, bounds_report.objects_checked, bounds_report.tokens_checked
+            );
+        }
+        if let Some(h) = mock_handle {
+            h.abort();
+        }
+        let _ = bounds_report.into_result()?;
+        return Ok(());
+    }
+
+    if let Some(h) = mock_handle {
+        h.abort();
+    }
+    Ok(())
+}
+
+async fn load_preview_batch_for_target(
+    cfg: &HydrogenConfig,
+    product: &str,
+    subject: &str,
+    target_arg: &str,
+    sel: &PreviewSelection,
+) -> Result<hydrogen::carbon::preview::BuiltPreviewBatch> {
+    let as_path = Path::new(target_arg);
+    if as_path.is_file() {
+        let raw = std::fs::read_to_string(as_path)?;
+        let pkg: QuestionPackage = serde_json::from_str(&raw)?;
+        return build_package_preview_batch(&pkg, sel);
+    }
+
+    let sqlite_path = cfg.vault_sqlite_path(product, subject);
+    let bundle_path = cfg.vault_bundle_path(product, subject);
+    if sqlite_path.is_file() || bundle_path.is_file() {
+        let vault = open_vault_for(cfg, product, subject).await?;
+        if let Some(cq) = vault.get_question(target_arg).await? {
+            return build_question_preview_batch(&cq, sel);
+        }
+    }
+
+    if let Some(archive_json) =
+        find_archive_question_json(&cfg.subject_archive_dir(product, subject), target_arg)?
+    {
+        let raw = std::fs::read_to_string(archive_json)?;
+        let pkg: QuestionPackage = serde_json::from_str(&raw)?;
+        return build_package_preview_batch(&pkg, sel);
+    }
+
+    Err(HydrogenError::Validation(format!(
+        "question '{target_arg}' not found in vault {} or archive/",
+        sqlite_path.display()
+    )))
+}
+
+fn find_archive_question_json(archive_subj_dir: &Path, qid: &str) -> Result<Option<PathBuf>> {
+    if !archive_subj_dir.is_dir() {
+        return Ok(None);
+    }
+    let expected_name = format!("{qid}.json");
+    let direct = archive_subj_dir.join(&expected_name);
+    if direct.is_file() {
+        return Ok(Some(direct));
+    }
+    for res in std::fs::read_dir(archive_subj_dir)? {
+        let entry = res?;
+        let p = entry.path();
+        if p.is_dir() {
+            let candidate = p.join(&expected_name);
+            if candidate.is_file() {
+                return Ok(Some(candidate));
+            }
+        }
+    }
+    Ok(None)
 }
 
 async fn cmd_catalog(args: &[String]) -> Result<()> {
@@ -865,7 +1669,13 @@ async fn cmd_catalog(args: &[String]) -> Result<()> {
 async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
     let cfg = HydrogenConfig::load(workspace_root()?)?;
     let valued_flags = [
-        "--part", "--step", "--level", "--substep", "--carbon", "--product", "--subject",
+        "--part",
+        "--step",
+        "--level",
+        "--substep",
+        "--carbon",
+        "--product",
+        "--subject",
     ];
     let explicit_qid = first_positional(args, &valued_flags).map(str::to_string);
     let watch = has_flag(args, "--watch");
@@ -946,7 +1756,14 @@ async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
                 vault.sqlite_path().display()
             ))
         })?;
-        let built = build_question_preview_batch(&cq, &sel)?;
+        let mut built = build_question_preview_batch(&cq, &sel)?;
+        let stored_feedback =
+            load_feedback_entries_for_item(&vault, &built.question_id, true).await?;
+        built
+            .commands
+            .push(CarbonCommand::SetFeedback(SetFeedbackPayload::List {
+                entries: stored_feedback,
+            }));
         let ack = client.send_batch(built.commands.clone()).await?;
         let state = client.get_state(false).await?;
 
@@ -986,7 +1803,16 @@ async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
     }
 
     if watch {
-        run_interactive_watch_loop(&client, &vault, &mut current_qid, &mut sel).await?;
+        run_interactive_watch_loop(
+            &cfg,
+            &product,
+            &subject,
+            &client,
+            &vault,
+            &mut current_qid,
+            &mut sel,
+        )
+        .await?;
     }
 
     if let Some(h) = mock_handle {
@@ -996,6 +1822,9 @@ async fn cmd_preview_carbon(args: &[String]) -> Result<()> {
 }
 
 async fn run_interactive_watch_loop(
+    cfg: &HydrogenConfig,
+    product: &str,
+    subject: &str,
     client: &CarbonClient,
     vault: &VaultManager,
     current_qid: &mut String,
@@ -1014,7 +1843,7 @@ async fn run_interactive_watch_loop(
     };
 
     println!(
-        "\n[Watch] Live interactive session active ({} questions loaded). Click Gallery cards, Part tabs, |◀/◀/▶ Steps, Break step down, L9..L1 chips, Reveal Answer, or ◀/▶ Nav in Carbon (Ctrl+C to stop)...",
+        "\n[Watch] Live two-way session active ({} questions loaded). Navigate Gallery/Steps/L9..L1 or save Snap Board comments in Carbon (Ctrl+C to stop)...",
         full_questions.len()
     );
 
@@ -1027,13 +1856,68 @@ async fn run_interactive_watch_loop(
             println!("[Watch] Prompt answered: {prompt_id} = {value}");
         }
 
+        match handle_watch_persistence_event(
+            &ev.event,
+            cfg,
+            product,
+            subject,
+            vault,
+            client,
+            current_qid,
+        )
+        .await
+        {
+            Ok(Some(WatchPersistenceOutcome::CommentSaved {
+                comment_id,
+                target_id,
+                attachment_count,
+                open_count_for_item,
+            })) => {
+                println!(
+                    "[Watch] Persisted Snap Board comment {comment_id} -> {target_id} ({attachment_count} attachment(s), {open_count_for_item} open)"
+                );
+            }
+            Ok(Some(WatchPersistenceOutcome::CommentDeleted {
+                comment_id,
+                item_id,
+                deleted,
+                open_count_for_item,
+            })) => {
+                println!(
+                    "[Watch] Deleted comment {comment_id} on {item_id} (removed={deleted}, {open_count_for_item} open)"
+                );
+            }
+            Ok(Some(WatchPersistenceOutcome::ReplicaQueued {
+                task_id,
+                target_kind,
+                target_id,
+            })) => {
+                println!(
+                    "[Watch] Queued create-replica task {task_id} -> {target_kind}:{target_id} in ledger.json"
+                );
+            }
+            Ok(None) => {}
+            Err(err) => {
+                eprintln!("[Watch] persistence error: {err}");
+            }
+        }
+
         if apply_interactive_event(&ev.event, current_qid, sel, &full_questions)
             && let Some(cq) = full_questions
                 .iter()
                 .find(|q| q.question_id == *current_qid)
         {
             match build_question_preview_batch(cq, sel) {
-                Ok(built) => {
+                Ok(mut built) => {
+                    if let Ok(stored_feedback) =
+                        load_feedback_entries_for_item(vault, &built.question_id, true).await
+                    {
+                        built
+                            .commands
+                            .push(CarbonCommand::SetFeedback(SetFeedbackPayload::List {
+                                entries: stored_feedback,
+                            }));
+                    }
                     let _ = client.send_batch(built.commands).await?;
                     println!(
                         "[Watch] -> {} (part='{}', step='{}' [{}/{}], L{} '{}', substep={:?}, answer={})",
@@ -1076,8 +1960,8 @@ async fn cmd_pack(args: &[String]) -> Result<()> {
     );
 
     if let Some(clean_out) = parse_flag_value(args, "--clean-out") {
-        let customer_key = parse_flag_value(args, "--customer-key")
-            .unwrap_or_else(|| cfg.lesson_key.clone());
+        let customer_key =
+            parse_flag_value(args, "--customer-key").unwrap_or_else(|| cfg.lesson_key.clone());
         let out_path = PathBuf::from(clean_out);
         vault.export_clean_bundle(&out_path, &customer_key).await?;
         println!(
@@ -1101,12 +1985,8 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
     let bundle_path = cfg.vault_bundle_path("gyaraplus", "maths");
     let assets_dir = cfg.product_assets_dir("gyaraplus");
 
-    let vault = VaultManager::open_or_create(
-        &sqlite_path,
-        &bundle_path,
-        &cfg.lesson_key,
-        &cfg.device_id,
-    )?;
+    let vault =
+        VaultManager::open_or_create(&sqlite_path, &bundle_path, &cfg.lesson_key, &cfg.device_id)?;
     let seeded = vault.seed_gyara_maths(&assets_dir).await?;
     let manifest = vault.pack_to_default_bundle().await?;
     let (white_logo_uri, blue_logo_uri) = vault.read_gyara_brand_logos().await?;
@@ -1150,7 +2030,10 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
         "  - 11+ System       : `a + b = 52`, `a - b = 14` -> solved a={val_a}, b={val_b} (method={})",
         solved.method.as_deref().unwrap_or("exact")
     );
-    println!("  - Exact Value `a`  : `{}` | KaTeX: `{}`", check_a.exact, check_a.katex);
+    println!(
+        "  - Exact Value `a`  : `{}` | KaTeX: `{}`",
+        check_a.exact, check_a.katex
+    );
     println!(
         "  - 5-Option MCQ Gate: Options [A:19, B:26, C:33, D:38, E:66] -> Sole exact match = Option {} ('33')\n",
         (b'A' + valid_choice as u8) as char
@@ -1204,7 +2087,16 @@ async fn cmd_demo(args: &[String]) -> Result<()> {
             .map(|q| q.question_id.clone())
             .unwrap_or_else(|| "GYR-MTH-P001-Q001".to_string());
         let mut sel = PreviewSelection::default();
-        run_interactive_watch_loop(&client, &vault, &mut current_qid, &mut sel).await?;
+        run_interactive_watch_loop(
+            &cfg,
+            "gyaraplus",
+            "maths",
+            &client,
+            &vault,
+            &mut current_qid,
+            &mut sel,
+        )
+        .await?;
     } else if let Some(mut rx) = client.take_event_receiver().await
         && let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await
     {
@@ -1418,6 +2310,74 @@ async fn spawn_demo_loopback_carbon() -> Result<(String, tokio::task::JoinHandle
                     };
                     if let Ok(raw) = encode_server_message(&state_msg) {
                         let _ = ws.send(Message::Text(raw.into())).await;
+                    }
+                }
+                ClientMessage::CaptureBoard { id, .. } => {
+                    let png = RgbaBuffer {
+                        width: 320,
+                        height: 200,
+                        data: vec![253u8; 320 * 200 * 4],
+                    }
+                    .encode_png()
+                    .unwrap_or_default();
+                    let cap_msg = ServerMessage::Capture {
+                        request_id: id,
+                        mime_type: "image/png".to_string(),
+                        width_px: 320,
+                        height_px: 200,
+                        bounds: NormalizedRect::new(0.0, 0.0, 1.0, 1.0),
+                        data_base64: encode_base64(&png),
+                    };
+                    if let Ok(raw) = encode_server_message(&cap_msg) {
+                        let _ = ws.send(Message::Text(raw.into())).await;
+                    }
+                }
+                ClientMessage::Interact {
+                    id, interaction, ..
+                } => {
+                    let ack = ServerMessage::Ack(CommandAck {
+                        request_id: id,
+                        ok: true,
+                        action_ids: vec!["interact-1".to_string()],
+                        error: None,
+                    });
+                    if let Ok(raw) = encode_server_message(&ack) {
+                        let _ = ws.send(Message::Text(raw.into())).await;
+                    }
+                    let maybe_ev = match interaction {
+                        ClientInteraction::SaveComment { entry } => {
+                            Some(CarbonEvent::CommentSaved { entry })
+                        }
+                        ClientInteraction::DeleteComment {
+                            comment_id,
+                            item_id,
+                            part_id,
+                        } => Some(CarbonEvent::CommentDeleted {
+                            comment_id,
+                            item_id,
+                            part_id,
+                        }),
+                        ClientInteraction::RequestCatalogAction {
+                            action,
+                            target_kind,
+                            target_id,
+                        } => Some(CarbonEvent::CatalogActionRequested {
+                            action,
+                            target_kind,
+                            target_id,
+                        }),
+                        _ => None,
+                    };
+                    if let Some(event) = maybe_ev {
+                        let env = ServerMessage::Event(CarbonEventEnvelope {
+                            seq: 3,
+                            timestamp_ms: 1763838000700,
+                            actor: None,
+                            event,
+                        });
+                        if let Ok(raw) = encode_server_message(&env) {
+                            let _ = ws.send(Message::Text(raw.into())).await;
+                        }
                     }
                 }
                 _ => {}

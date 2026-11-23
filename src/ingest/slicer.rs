@@ -1,9 +1,9 @@
 //! Pure-Rust PDF & PNG page renderer and clean-room question/diagram cropper (`hayro` + `png`).
 //!
-//! Renders source pages into `products/<product>/archive/<subject>/<paper_id>/pages/`,
-//! slices individual crops into `products/<product>/archive/<subject>/<paper_id>/crops/`,
-//! and records `{ universal_id, source_file, page, bbox }` in `products/<product>/private-xref.json`
-//! without ever touching `<product>-<subject>.raphs` or Git-tracked directories.
+//! Renders source pages into `products/<product>/<subject>/archive/<paper_id>/pages/`,
+//! slices individual crops into `products/<product>/<subject>/archive/<paper_id>/crops/`,
+//! and records `{ universal_id, source_file, page, bbox, bboxPx, cropPath }` directly in
+//! `products/<product>/<subject>/ledger.json` without ever touching `<stem>.raphs` or Git-tracked directories.
 
 use std::collections::BTreeSet;
 use std::io::Cursor;
@@ -18,9 +18,9 @@ use serde::{Deserialize, Serialize};
 use crate::config::HydrogenConfig;
 use crate::domain::{ContainerSegment, UniversalId};
 use crate::error::{HydrogenError, Result};
-use crate::ingest::xref::{
-    ItemXrefEntry, NormalizedBBox, PaperXrefEntry, PixelBBox, PrivateXrefStore, RenderedPageRecord,
-    now_ms,
+use crate::ingest::ledger::{
+    NormalizedBBox, PixelBBox, ProductLedger, RenderedPageRecord, SlicedCropRecord,
+    SlicedPaperRecord,
 };
 
 /// Default rasterization resolution in dots per inch (`72 pt == 1 inch`, so `180 DPI == 2.5x`).
@@ -56,7 +56,7 @@ pub enum SliceMode {
         pad_px: u32,
         start_question_no: u32,
     },
-    /// Slice explicit normalized or pixel bounding boxes into `archive/` + `private-xref.json`.
+    /// Slice explicit normalized or pixel bounding boxes into `archive/` + `ledger.json`.
     ExplicitCrops(Vec<CropSpec>),
 }
 
@@ -71,13 +71,13 @@ impl Default for SliceMode {
     }
 }
 
-/// Parameters for slicing a raw PDF paper or PNG worksheet into `archive/` + `private-xref.json`.
+/// Parameters for slicing a raw PDF paper or PNG worksheet into `archive/` + `ledger.json`.
 #[derive(Debug, Clone)]
 pub struct SlicePaperRequest {
     pub source_path: PathBuf,
     pub product: String,
     pub subject: String,
-    /// Clean paper ID (e.g. `"GYR-MTH-P001"`). If `None`, assigns the next sequential paper ID in `private-xref.json`.
+    /// Clean paper ID (e.g. `"GYR-MTH-P001"`). If `None`, assigns the next sequential paper ID in `ledger.json`.
     pub paper_id: Option<String>,
     pub dpi: f32,
     /// Optional 1-based inclusive `(start_page, end_page)` filter.
@@ -93,10 +93,10 @@ pub struct SlicePaperRequest {
 pub struct SlicePaperSummary {
     pub paper_id: String,
     pub archived_source_path: PathBuf,
-    pub xref_path: PathBuf,
+    pub ledger_path: PathBuf,
     pub total_pdf_pages: u32,
     pub rendered_pages: Vec<RenderedPageRecord>,
-    pub sliced_items: Vec<ItemXrefEntry>,
+    pub sliced_items: Vec<SlicedCropRecord>,
 }
 
 /// Unpremultiplied RGBA8 raster buffer in row-major order (`4 * width * height` bytes).
@@ -111,7 +111,9 @@ impl RgbaBuffer {
     /// Extract a clamped rectangular sub-region as a standalone `RgbaBuffer`.
     pub fn crop(&self, rect: PixelBBox) -> Result<Self> {
         if self.width == 0 || self.height == 0 {
-            return Err(HydrogenError::Validation("cannot crop empty image buffer".into()));
+            return Err(HydrogenError::Validation(
+                "cannot crop empty image buffer".into(),
+            ));
         }
         let x = rect.x.min(self.width.saturating_sub(1));
         let y = rect.y.min(self.height.saturating_sub(1));
@@ -145,12 +147,12 @@ impl RgbaBuffer {
             let mut encoder = png::Encoder::new(&mut out, self.width, self.height);
             encoder.set_color(png::ColorType::Rgba);
             encoder.set_depth(png::BitDepth::Eight);
-            let mut writer = encoder.write_header().map_err(|e| {
-                HydrogenError::Validation(format!("PNG header encode error: {e}"))
-            })?;
-            writer.write_image_data(&self.data).map_err(|e| {
-                HydrogenError::Validation(format!("PNG pixel encode error: {e}"))
-            })?;
+            let mut writer = encoder
+                .write_header()
+                .map_err(|e| HydrogenError::Validation(format!("PNG header encode error: {e}")))?;
+            writer
+                .write_image_data(&self.data)
+                .map_err(|e| HydrogenError::Validation(format!("PNG pixel encode error: {e}")))?;
         }
         Ok(out)
     }
@@ -224,8 +226,8 @@ impl RgbaBuffer {
     }
 }
 
-/// Render and slice a source PDF or PNG into `products/<product>/archive/<subject>/<paper_id>/`
-/// and update `products/<product>/private-xref.json`.
+/// Render and slice a source PDF or PNG into `products/<product>/<subject>/archive/<paper_id>/`
+/// and update `products/<product>/<subject>/ledger.json` atomically.
 pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<SlicePaperSummary> {
     if !req.source_path.is_file() {
         return Err(HydrogenError::Validation(format!(
@@ -239,23 +241,25 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
         DEFAULT_RENDER_DPI
     };
 
-    let xref_path = cfg.private_xref_path(&req.product);
-    let mut xref = PrivateXrefStore::load_or_new(&xref_path, &req.product)?;
+    let ledger_path = cfg.ledger_path(&req.product, &req.subject);
+    let mut ledger = ProductLedger::load_or_new(&ledger_path, &req.product, &req.subject)?;
 
     let paper_id = match req.paper_id.as_deref() {
         Some(explicit) => {
             let parsed = UniversalId::parse(explicit)?;
-            if !matches!(parsed.container, Some(ContainerSegment::Paper { .. })) || parsed.item.is_some() {
+            if !matches!(parsed.container, Some(ContainerSegment::Paper { .. }))
+                || parsed.item.is_some()
+            {
                 return Err(HydrogenError::Validation(format!(
                     "expected a Paper UniversalId (e.g. 'GYR-MTH-P001'), got '{explicit}'"
                 )));
             }
             explicit.to_string()
         }
-        None => next_sequential_paper_id(&xref, &req.product, &req.subject)?,
+        None => next_sequential_paper_id(&ledger, &req.product, &req.subject)?,
     };
 
-    let product_dir = cfg.product_dir(&req.product);
+    let subject_dir = cfg.subject_dir(&req.product, &req.subject);
     let paper_archive_dir = cfg
         .subject_archive_dir(&req.product, &req.subject)
         .join(&paper_id);
@@ -281,7 +285,7 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
             std::fs::remove_file(&req.source_path)?;
         }
     }
-    let archived_source_rel = relative_to(&product_dir, &archived_source_abs);
+    let archived_source_rel = relative_to(&subject_dir, &archived_source_abs);
 
     // Determine which 1-based pages need to be available
     let explicit_pages: Option<BTreeSet<u32>> = match &req.mode {
@@ -329,9 +333,9 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
         )));
     };
 
-    // Merge rendered page metadata with any previously rendered pages in `private-xref.json`
+    // Merge rendered page metadata with any previously rendered pages in `ledger.json`
     let mut page_records_by_no = std::collections::BTreeMap::<u32, RenderedPageRecord>::new();
-    if let Some(existing_paper) = xref.papers.get(&paper_id) {
+    if let Some(existing_paper) = ledger.papers.get(&paper_id) {
         for p in &existing_paper.pages {
             page_records_by_no.insert(p.page, p.clone());
         }
@@ -342,7 +346,7 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
             *page_no,
             RenderedPageRecord {
                 page: *page_no,
-                image_path: relative_to(&product_dir, &page_abs),
+                image_path: relative_to(&subject_dir, &page_abs),
                 width_px: buf.width,
                 height_px: buf.height,
             },
@@ -350,7 +354,7 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
     }
     let rendered_pages: Vec<RenderedPageRecord> = page_records_by_no.into_values().collect();
 
-    xref.upsert_paper(PaperXrefEntry {
+    ledger.upsert_sliced_paper(SlicedPaperRecord {
         paper_id: paper_id.clone(),
         subject: req.subject.clone(),
         source_file: source_filename.clone(),
@@ -358,7 +362,6 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
         page_count: total_pages,
         dpi,
         pages: rendered_pages.clone(),
-        updated_at_ms: now_ms(),
     });
 
     // Execute slicing mode
@@ -390,8 +393,16 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
                         let clamped = PixelBBox {
                             x: px.x.min(page_buf.width.saturating_sub(1)),
                             y: px.y.min(page_buf.height.saturating_sub(1)),
-                            w: px.w.max(1).min(page_buf.width.saturating_sub(px.x.min(page_buf.width.saturating_sub(1)))),
-                            h: px.h.max(1).min(page_buf.height.saturating_sub(px.y.min(page_buf.height.saturating_sub(1)))),
+                            w: px.w.max(1).min(
+                                page_buf
+                                    .width
+                                    .saturating_sub(px.x.min(page_buf.width.saturating_sub(1))),
+                            ),
+                            h: px.h.max(1).min(
+                                page_buf
+                                    .height
+                                    .saturating_sub(px.y.min(page_buf.height.saturating_sub(1))),
+                            ),
                         };
                         let nb = NormalizedBBox::from_pixel_bbox(
                             clamped,
@@ -408,7 +419,7 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
                 let crop_abs = crops_dir.join(format!("{safe_stem}.png"));
                 std::fs::write(&crop_abs, png_bytes)?;
 
-                let item = ItemXrefEntry {
+                let item = SlicedCropRecord {
                     universal_id: spec.universal_id.clone(),
                     paper_id: paper_id.clone(),
                     subject: req.subject.clone(),
@@ -416,12 +427,11 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
                     page: spec.page,
                     bbox: bbox_norm,
                     bbox_px,
-                    crop_path: relative_to(&product_dir, &crop_abs),
+                    crop_path: relative_to(&subject_dir, &crop_abs),
                     width_px: cropped.width,
                     height_px: cropped.height,
-                    updated_at_ms: now_ms(),
                 };
-                xref.upsert_item(item.clone());
+                ledger.upsert_sliced_item(&item);
                 sliced_items.push(item);
             }
         }
@@ -451,7 +461,7 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
                     let crop_abs = crops_dir.join(format!("{uid}.png"));
                     std::fs::write(&crop_abs, png_bytes)?;
 
-                    let item = ItemXrefEntry {
+                    let item = SlicedCropRecord {
                         universal_id: uid,
                         paper_id: paper_id.clone(),
                         subject: req.subject.clone(),
@@ -459,24 +469,24 @@ pub fn slice_paper(cfg: &HydrogenConfig, req: &SlicePaperRequest) -> Result<Slic
                         page: *page_no,
                         bbox: bbox_norm,
                         bbox_px,
-                        crop_path: relative_to(&product_dir, &crop_abs),
+                        crop_path: relative_to(&subject_dir, &crop_abs),
                         width_px: cropped.width,
                         height_px: cropped.height,
-                        updated_at_ms: now_ms(),
                     };
-                    xref.upsert_item(item.clone());
+                    ledger.upsert_sliced_item(&item);
                     sliced_items.push(item);
                 }
             }
         }
     }
 
-    xref.save_atomic(&xref_path)?;
+    ledger.sync_with_workspace(cfg, None)?;
+    ledger.save_atomic(&ledger_path)?;
 
     Ok(SlicePaperSummary {
         paper_id,
         archived_source_path: archived_source_abs,
-        xref_path,
+        ledger_path,
         total_pdf_pages: total_pages,
         rendered_pages,
         sliced_items,
@@ -491,8 +501,9 @@ fn render_pdf_pages(
     explicit_pages: Option<&BTreeSet<u32>>,
 ) -> Result<(u32, Vec<(u32, RgbaBuffer)>)> {
     let raw_bytes = std::fs::read(pdf_path)?;
-    let pdf = Pdf::new(raw_bytes)
-        .map_err(|e| HydrogenError::Validation(format!("failed to parse PDF {}: {e:?}", pdf_path.display())))?;
+    let pdf = Pdf::new(raw_bytes).map_err(|e| {
+        HydrogenError::Validation(format!("failed to parse PDF {}: {e:?}", pdf_path.display()))
+    })?;
 
     let pages = pdf.pages();
     let total_pages = u32::try_from(pages.len()).unwrap_or(0);
@@ -556,9 +567,9 @@ fn render_pdf_pages(
             }
         }
 
-        let png_bytes = pixmap
-            .into_png()
-            .map_err(|e| HydrogenError::Validation(format!("PNG encode error on page {page_no}: {e}")))?;
+        let png_bytes = pixmap.into_png().map_err(|e| {
+            HydrogenError::Validation(format!("PNG encode error on page {page_no}: {e}"))
+        })?;
         std::fs::write(&page_png_path, png_bytes)?;
 
         out.push((
@@ -605,7 +616,9 @@ pub fn detect_horizontal_ink_bands(
             let p = row_off + (x as usize) * 4;
             if let Some(px) = buf.data.get(p..p + 4) {
                 // Dark pixel on white paper (`alpha > 32` and luminance `< 236`)
-                let lum = (u32::from(px[0]) * 299 + u32::from(px[1]) * 587 + u32::from(px[2]) * 114) / 1000;
+                let lum =
+                    (u32::from(px[0]) * 299 + u32::from(px[1]) * 587 + u32::from(px[2]) * 114)
+                        / 1000;
                 if px[3] > 32 && lum < 236 {
                     dark_count += 1;
                     if dark_count >= min_ink_pixels {
@@ -662,11 +675,15 @@ pub fn detect_horizontal_ink_bands(
         .collect()
 }
 
-fn next_sequential_paper_id(xref: &PrivateXrefStore, product: &str, subject: &str) -> Result<String> {
+fn next_sequential_paper_id(
+    ledger: &ProductLedger,
+    product: &str,
+    subject: &str,
+) -> Result<String> {
     let prod_code = UniversalId::product_prefix_for_slug(product);
     let subj_code = UniversalId::subject_prefix_for_slug(subject);
     let mut max_no = 0u32;
-    for existing_id in xref.papers.keys() {
+    for existing_id in ledger.papers.keys() {
         if let Ok(uid) = UniversalId::parse(existing_id)
             && uid.product_code == prod_code
             && uid.subject_code == subj_code
@@ -717,12 +734,12 @@ mod tests {
     }
 
     #[test]
-    fn slices_synthetic_png_auto_bands_and_explicit_crops_into_private_xref() -> Result<()> {
+    fn slices_synthetic_png_auto_bands_and_explicit_crops_into_ledger() -> Result<()> {
         let tmp = std::env::temp_dir().join(format!("hydrogen-slicer-test-{}", std::process::id()));
         if tmp.exists() {
             std::fs::remove_dir_all(&tmp)?;
         }
-        std::fs::create_dir_all(tmp.join("products/gyaraplus/inbox/maths"))?;
+        std::fs::create_dir_all(tmp.join("products/gyaraplus/maths/inbox"))?;
 
         let cfg = HydrogenConfig {
             workspace_root: tmp.clone(),
@@ -759,8 +776,14 @@ mod tests {
         )?;
         assert_eq!(auto_summary.paper_id, "GYR-MTH-P001");
         assert_eq!(auto_summary.sliced_items.len(), 3);
-        assert_eq!(auto_summary.sliced_items[0].universal_id, "GYR-MTH-P001-Q001");
-        assert_eq!(auto_summary.sliced_items[2].universal_id, "GYR-MTH-P001-Q003");
+        assert_eq!(
+            auto_summary.sliced_items[0].universal_id,
+            "GYR-MTH-P001-Q001"
+        );
+        assert_eq!(
+            auto_summary.sliced_items[2].universal_id,
+            "GYR-MTH-P001-Q003"
+        );
 
         // 2. Explicit normalized bbox crop mode -> slices exact diagram box
         let exp_summary = slice_paper(
@@ -789,9 +812,20 @@ mod tests {
         assert_eq!(exp_summary.sliced_items[0].width_px, 720);
         assert_eq!(exp_summary.sliced_items[0].height_px, 240);
 
-        let xref = PrivateXrefStore::load_or_new(&cfg.private_xref_path("gyaraplus"), "gyaraplus")?;
-        assert!(xref.items.contains_key("GYR-MTH-P001-Q001"));
-        assert!(xref.items.contains_key("GYR-MTH-P001-Q014"));
+        let ledger = ProductLedger::load_or_new(
+            &cfg.ledger_path("gyaraplus", "maths"),
+            "gyaraplus",
+            "maths",
+        )?;
+        assert!(ledger.items.contains_key("GYR-MTH-P001-Q001"));
+        assert!(ledger.items.contains_key("GYR-MTH-P001-Q014"));
+        assert_eq!(
+            ledger.items["GYR-MTH-P001-Q001"].crop_path.as_deref(),
+            Some("archive/GYR-MTH-P001/crops/GYR-MTH-P001-Q001.png")
+        );
+        assert!(ledger.items["GYR-MTH-P001-Q001"].bbox.is_some());
+        assert!(ledger.items["GYR-MTH-P001-Q001"].bbox_px.is_some());
+        assert_eq!(ledger.papers["GYR-MTH-P001"].page_count, Some(1));
 
         std::fs::remove_dir_all(&tmp)?;
         Ok(())

@@ -37,7 +37,7 @@ Hydrogen is architected as a reusable curriculum factory across multiple educati
 
 | Component | Role in Ecosystem | Boundary with Hydrogen |
 | :--- | :--- | :--- |
-| **`papers`** | Raw input sources: PDF exam papers, books/chapters, topic worksheets, worked examples, tests, and image snapshots. | **Input only.** Raw files, scans, cropped snapshots, and **any name/reference to the original source paper/publisher** must **never** appear in the output `.raphs` vault. Only Hydrogen stores a private cross-reference (`private-xref.json`) for verification. |
+| **`papers`** | Raw input sources: PDF exam papers, books/chapters, topic worksheets, worked examples, tests, and image snapshots. | **Input only.** Raw files, scans, cropped snapshots, and **any name/reference to the original source paper/publisher** must **never** appear in the output `.raphs` vault. Only Hydrogen stores local provenance in `ledger.json` for verification. |
 | **`hydrogen`** *(This Project)* | Heavy AI Solution Compiler Toolkit, Product Ledger, Replica Verifier & Vault Manager (`Pure Rust CLI + Antigravity + status.html`). | **Owns all heavy intelligence & authoring:** PDF/image extraction, product ledger (`ledger.json` + `status.html`), visual/photo regeneration, Theta verification, `9 → 1` Carbon scene & headless visual QA, two-way Carbon `--watch` comment sync, replica/topic workflows, and `.raphs` packaging. |
 | **`<product>-<subject>.raphs`** | Single-file encrypted SQLite course vault (e.g., `gyara-maths.raphs`) on `memory.raphs` **Schema `2.3.0` (`L7 Course Layer`)**. | **Hydrogen's primary output & authoring feedback store.** Indexes Books, Chapters, Papers, Sections, Topics, Question Types, Shared Stimuli, Questions, `9 → 1` Solutions, Brand Logo & Media Blobs, and Author Comments; unlocked via **one simple Lesson Key**. **Contains zero student statistics.** |
 | **`theta`** (`theta_calc`) | Pure-Rust deterministic symbolic/numerical CAS, unit solver, 313-formula registry & 120 FPS Graph VM. | Linked directly into Hydrogen (`theta_calc`) at **compile time** to verify every step, fraction, root, graph landmark, and MCQ distractor; also used by SIGMA & Carbon at runtime. |
@@ -49,29 +49,25 @@ Hydrogen is architected as a reusable curriculum factory across multiple educati
 ## 3. Core Functional Requirements
 
 ### FR-1: Product & Subject Workspace Directory Structure (Git-Tracked Assets vs. Git-Ignored Inbox)
-Hydrogen organizes product brand assets/documents, raw inputs, archived sources, private cross-references, and compiled `.raphs` vaults in a standardized per-product directory layout. **`products/` itself is tracked in Git** (so product-specific logos, images, and docs live cleanly in version control), while `inbox/`, `archive/`, `private-xref.json`, and `.raphs`/`.sqlite` binaries are Git-ignored:
+Hydrogen organizes product brand assets/documents, raw inputs, archived sources, sub-product ledgers, and compiled `.raphs` vaults in a standardized layout. **`products/` itself is tracked in Git** (so product-specific logos, images, and docs live cleanly in version control), while `inbox/`, `archive/`, `ledger.json`, `status.html`, and `.raphs`/`.sqlite` binaries are Git-ignored:
 
 ```text
 hydrogen/
-├── products/                                        # Tracked in Git (assets, logos, product docs)
+├── products/                                        # Tracked in Git (`assets/` only; sub-products Git-ignored)
 │   ├── gyaraplus/                                   # 11+ (Gyara+) Product Line
-│   │   ├── assets/                                  # GIT-TRACKED brand logos & product visuals
+│   │   ├── assets/                                  # GIT-TRACKED shared brand logos & product visuals
 │   │   │   ├── gyara-white.png                      # Primary dark-slate & subject-card logo (font-independent)
 │   │   │   ├── gyara-blue.png                       # Light-background logo variant (font-independent)
 │   │   │   ├── gyara-white.svg                      # Vector source asset
 │   │   │   └── gyara-blue.svg                       # Vector source asset
-│   │   ├── inbox/                                   # GIT-IGNORED: Drop raw PDF papers / chapters / images here
-│   │   │   └── maths/
-│   │   ├── archive/                                 # GIT-IGNORED: Processed raw source files & crops (NEVER in .raphs)
-│   │   │   └── maths/
-│   │   ├── private-xref.json                        # GIT-IGNORED: Hydrogen-only map (GYR-MTH-P001 <-> source PDF/page/bbox)
-│   │   ├── ledger.json                              # GIT-IGNORED: Product-wide SHA-256 inbox inventory, paper/topic progress & task queue
-│   │   ├── status.html                              # GIT-IGNORED: Self-contained Warm-Paper visual status & side-by-side crop dashboard
-│   │   ├── gyara-maths.raphs                        # GIT-IGNORED: Live L7 course vault (SQLCipher)
-│   │   ├── gyara-english.raphs
-│   │   ├── gyara-verbal-reasoning.raphs
-│   │   └── gyara-non-verbal-reasoning.raphs
-│   └── gcse/                                        # Future GCSE Product Line
+│   │   └── maths/                                   # Sub-product folder (created ONLY when working on Maths)
+│   │       ├── inbox/                               # GIT-IGNORED: Drop raw PDF papers / chapters / images here
+│   │       ├── archive/                             # GIT-IGNORED: Processed raw source files & crops (NEVER in .raphs)
+│   │       ├── ledger.json                          # GIT-IGNORED: Unified sub-product ledger (SHA-256 sources, pages/bbox crops, progress, replica lineage & tasks)
+│   │       ├── status.html                          # GIT-IGNORED: Self-contained Warm-Paper visual status & side-by-side crop dashboard
+│   │       ├── gyara-maths.sqlite                   # GIT-IGNORED: Live L7 SQLCipher working container (+ .keys.json)
+│   │       └── gyara-maths.raphs                    # GIT-IGNORED: Deliverable sub-product bundle
+│   └── gcse/                                        # GCSE Product Line (only worked sub-products created on demand)
 │       ├── assets/
 │       ├── maths/
 │       │   └── gcse-maths.raphs
@@ -94,7 +90,7 @@ hydrogen/
      - `GYR-MTH-T_RAT01-C01` *(Ratio Topic 01, Concept Card 01)*
 2. **Zero Source Paper Leakage:**
    - The compiled `.raphs` file must contain **zero binary scans/crops** from the original paper and **zero textual/metadata references** to the external school, exam board, filename, or source paper title.
-   - Only Hydrogen's local `private-xref.json` retains the mapping from `GYR-MTH-P001-Q014` back to the archived original PDF page and bounding box for author cross-checking.
+   - Only Hydrogen's local `ledger.json` retains the mapping from `GYR-MTH-P001-Q014` back to the archived original PDF page and bounding box for author cross-checking.
 
 ---
 
@@ -161,19 +157,19 @@ hydrogen/
 ### FR-9: Live Teaching Feedback Loop (Carbon Comments + `"Snap Board"` $\leftrightarrow$ Hydrogen)
 1. In Carbon (`chrome.update` with `authorMode: true` for owner sessions via `hydrogen preview-carbon --watch`, `false` for students), comments + 1-click **`Snap Board`** PNG screenshots / uploaded images emit `comment.saved` (`FeedbackEntry`) and are persisted straight into `course_comments` + `course_comment_attachments` inside `gyara-maths.raphs` (while `"create-replica"` card actions record tasks in `ledger.json`).
 2. Hydrogen + Antigravity process open comments via `hydrogen comments`:
-   - Cross-checks `private-xref.json` (original PDF crop) + attached board screenshot,
+   - Cross-checks `ledger.json` (original PDF crop) + attached board screenshot,
    - Updates the target question/step/sub-level (with prior version auto-saved in `course_question_revisions`) or creates requested replicas/topics,
    - Calls `resolve_course_comment(...)`, and extracts `"engine"` notes (`@theta` / `@carbon`) into an ecosystem developer backlog.
 
 ---
 
-### FR-10: Product Authoring Ledger (`ledger.json`) & Static Warm-Paper `status.html` Dashboard
-Because `<product>-<subject>.raphs` is Clean-Room anonymized and scoped per subject, Hydrogen maintains a lightweight Git-ignored product ledger paired with a zero-server static HTML report (`hydrogen status --html`):
-1. **Zero-Drift Product Ledger (`products/<product>/ledger.json`):**
-   - Scans `inbox/<subject>/` and `archive/<subject>/` with SHA-256 deduplication so duplicate PDFs are detected automatically even if renamed.
-   - Tracks expected question counts per paper (`GYR-MTH-P001`: `50` items), per-question pipeline stage (`cropped` / `verified`), and pending replica/topic tasks without duplicating compiled `.raphs` rows.
-2. **Self-Contained Warm-Paper `status.html` (`products/<product>/status.html`):**
-   - Merges live `CourseCatalogSnapshot`s across all subject `.sqlite` vaults with `ledger.json` and `private-xref.json`, rendering Subject summary cards, Paper progress bars, Topic coverage tables, side-by-side `archive/` crop vs. compiled stem inspection, and open `Snap Board` comment thumbnails—zero local web server required, while **Carbon (`:7420`)** provides the live 120Hz interactive gallery and `Level 9 → 1` stage.
+### FR-10: Sub-Product Authoring Ledger (`ledger.json`) & Static Warm-Paper `status.html` Dashboard
+Because `<product>-<subject>.raphs` is Clean-Room anonymized and scoped per sub-product, each active `products/<product>/<subject>/` folder maintains a lightweight Git-ignored ledger paired with a zero-server static HTML report (`hydrogen status --html`):
+1. **Zero-Drift Sub-Product Ledger (`products/<product>/<subject>/ledger.json`):**
+   - Scans `products/<product>/<subject>/{inbox,archive}/` with SHA-256 deduplication so duplicate PDFs are detected automatically even if renamed.
+   - Tracks expected question counts per paper (`GYR-MTH-P001`: `50` items), per-question original source/crop/JSON provenance and pipeline stage (`cropped` / `verified`), and pending replica/topic tasks without duplicating compiled `.raphs` rows.
+2. **Self-Contained Warm-Paper `status.html` (`products/<product>/<subject>/status.html`):**
+   - Merges live `CourseCatalogSnapshot` from that sub-product's `.sqlite` vault with unified `ledger.json` (discovering only active sub-products so untouched subjects never appear), rendering Vault metrics, Paper progress bars, Topic coverage tables, Replica lineage, side-by-side `archive/` crop vs. compiled stem inspection, and open `Snap Board` comment thumbnails—zero local web server required, while **Carbon (`:7420`)** provides the live 120Hz interactive gallery and `Level 9 → 1` stage.
 
 ---
 
@@ -189,10 +185,10 @@ Because `<product>-<subject>.raphs` is Clean-Room anonymized and scoped per subj
 
 | # | Area | Locked Decision |
 | :---: | :--- | :--- |
-| **1** | **Products & Brand Assets** | `products/` is **tracked in Git** (storing brand logos & product docs like `products/gyaraplus/assets/gyara-{white,blue}.{png,svg}`, embedded as PNG `blobs` in `.raphs`), while `inbox/`, `archive/`, `private-xref.json`, `ledger.json`, `status.html`, and `.raphs` vaults are Git-ignored. |
+| **1** | **Products & Brand Assets** | `products/` is **tracked in Git** (storing brand logos & product docs like `products/gyaraplus/assets/gyara-{white,blue}.{png,svg}`, embedded as PNG `blobs` in `.raphs`), while `inbox/`, `archive/`, `ledger.json`, `status.html`, and `.raphs` vaults are Git-ignored. |
 | **2** | **9-Level Scale** | **Question-relative (`9 → 1`):** `L9` = expected exam working; `L8..L1` = progressive visual/infant scaffolding; invisible to learner; err toward **more** levels. |
 | **3** | **Hydrogen vs. SIGMA** | **Heavy Hydrogen + Theta, Thin SIGMA:** Hydrogen pre-compiles all math, 2D/3D Carbon coordinates/macros, brand logos, and narration scripts; SIGMA only narrates, listens, merges `<student>.raphs` stats/reminders, and navigates. |
-| **4** | **Source Privacy & Ledger** | Zero source PDFs/crops and zero external paper names in `.raphs`; visuals/photos cleanly regenerated; local source tracking & queue state kept strictly in Git-ignored `private-xref.json` + `ledger.json` + `status.html`. |
+| **4** | **Source Privacy & Ledger** | Zero source PDFs/crops and zero external paper names in `.raphs`; visuals/photos cleanly regenerated; local source tracking, crop geometry, replica lineage & queue state kept strictly in Git-ignored `ledger.json` + `status.html`. |
 | **5** | **Question Format** | Default **5-option MCQ (`A–E`)** for Gyara 11+ (Theta-verified trap distractors) + `written` / `interactive` / `drawing` supported. |
 | **6** | **Database Schema** | Native SQLite **Layer `L7` (`course_*` tables)** in `memory.raphs` **Schema `2.3.0` (`memory_core_rs 1.7.0`)**—indexing Books, Chapters, Papers, Sections, Topics, Types, Stimuli, Questions, Brand/Media Blobs & Comments. |
 | **7** | **Learner Statistics** | **Strictly excluded from course `.raphs` vaults**; stored in `<student>.raphs` (`important` `△`, `15d` reminders, `#FFF1F2` `dueReminder` states, mastery) and merged by SIGMA at runtime for Carbon's Gallery (`chrome.setCatalog`). |

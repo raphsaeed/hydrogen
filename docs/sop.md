@@ -27,14 +27,14 @@ Rather than running heavy web servers or brittle hardcoded prompt chains, Hydrog
    - `Cargo.toml` enforces `unsafe_code = "forbid"`, `unwrap_used = "deny"`, `expect_used = "deny"`, and `panic = "deny"` across **all** targets (`lib`, `bin`, unit tests, and `tests/*.rs`).
    - Minimal dependencies: zero `clap`, `anyhow`, `config`, pdfium/poppler C++ bindings, or system OpenSSL C bindings.
 3. **Clean-Room `.raphs` Anonymization Law:**
-   - Raw source PDFs (`products/**/inbox/`), rendered pages & crops (`products/**/archive/`), `private-xref.json`, `ledger.json`, `status.html`, and any external school, exam board, publisher, or source PDF filename **MUST NEVER** enter `<product>-<subject>.raphs` or Git.
+   - Raw source PDFs (`products/**/inbox/`), rendered pages & crops (`products/**/archive/`), `ledger.json`, `status.html`, and any external school, exam board, publisher, or source PDF filename **MUST NEVER** enter `<product>-<subject>.raphs` or Git.
    - All diagrams/graphs/tables/clocks/nets are regenerated natively in Carbon (`scene.place2D` / `scene.place3D`); real photographs/videos are recreated cleanly as generated assets in `course_media_assets`.
 4. **Warm-Paper Theme & 5 Curated Font Voices + `PennstanderMath` Law:**
    - Every board command targets Carbon's light editorial `"warm-paper"` surface (`#FDFBF7` Left / `#FDFCF9` Right, primary ink `#1F2421`, semantic tokens `c1..c8`, diagram strokes `<= 2.2 pt`, transparent diagram labels, PNG-only `brandLogo`/`logo` `GYR-LOGO-BLUE`).
    - Wrap **100% of math, variables, fractions, exponents, currencies, and units in `$...$` or `\(...\)`** (rendered automatically by Carbon in **`PennstanderMath`** across all 5 curated voices: `handwritten`, `typeset`, `casual`, `marker`, `typewriter`). **Never** emit `"classic-serif"` unless explicitly requested.
-5. **Zero-Drift Split Between `.raphs` Vaults & Local `ledger.json`:**
-   - `<product>-<subject>.sqlite` / `.raphs` is the single source of truth for compiled curriculum, `9 → 1` solutions, PNG/media blobs, revisions, and `course_comments` (**zero learner stats**).
-   - Git-ignored `products/<product>/ledger.json` tracks raw `inbox/` SHA-256 inventory, expected paper question counts, and queued authoring tasks; `hydrogen status --html` merges both into `products/<product>/status.html`.
+5. **Zero-Drift Split Between `.raphs` Vaults & Local Sub-Product `ledger.json`:**
+   - `products/<product>/<subject>/<stem>.sqlite` / `.raphs` is the single source of truth for compiled curriculum, `9 → 1` solutions, PNG/media blobs, revisions, and `course_comments` (**zero learner stats**).
+   - Git-ignored `products/<product>/<subject>/ledger.json` tracks raw `inbox/` SHA-256 inventory, expected paper question counts, item provenance, and queued authoring tasks for that sub-product; `hydrogen status --html` merges both into `products/<product>/<subject>/status.html` (showing only active/worked subjects).
 
 ---
 
@@ -89,10 +89,11 @@ pkill -f "carbon-shell --headless"
 ## 3. Standard Ways of Working (Day-to-Day Authoring Playbook)
 
 ### Workflow A — Starting / Resuming Any Session (`hydrogen status`)
-Whenever starting a new Antigravity session (or checking overall product progress):
-1. Run `hydrogen status --product gyaraplus --html`.
-2. Inspect the terminal summary (and optional `products/gyaraplus/status.html`):
-   - Which raw PDFs/images are sitting unprocessed in `inbox/{maths,english,verbal-reasoning,non-verbal-reasoning}/` (checked by SHA-256 so renamed duplicates are flagged automatically),
+Whenever starting a new Antigravity session (or checking active sub-product progress):
+1. Run `hydrogen status --product gyaraplus --html` (or scope to a single sub-product with `--subject maths`).
+2. Inspect the terminal summary (and optional `products/<product>/<subject>/status.html`):
+   - Only **active/worked sub-products** (e.g. `products/gyaraplus/maths/` or `products/gcse/{maths,physics}/`) appear—untouched subjects never clutter `ledger.json` or `status.html`,
+   - Which raw PDFs/images are sitting unprocessed in `products/<product>/<subject>/inbox/` (checked by SHA-256 so renamed duplicates are flagged automatically),
    - Which papers are partially compiled (e.g. `GYR-MTH-P001`: `2/50` verified, next uncompiled items `Q002..Q014`),
    - Topic & concept card coverage across all strands,
    - Open `Snap Board` comments (`fix`, `replica`, `topic`, `engine`) and queued tasks in `ledger.json`.
@@ -100,17 +101,17 @@ Whenever starting a new Antigravity session (or checking overall product progres
 ### Workflow B — Ingesting & Compiling a Paper via Antigravity
 1. **Render Pages & Map Clean Bounding Boxes:**
    - Render pages at `180 DPI` (`hydrogen slice-paper <pdf> --paper-id GYR-MTH-P001 --pages-only`).
-   - Visually inspect page PNGs in `archive/.../pages/`, determine exact `[x, y, w, h]` normalized boxes for each question (`Q001..QN`), and slice crops into `archive/.../crops/` + `private-xref.json` + `ledger.json` (`hydrogen slice-paper <pdf> --paper-id GYR-MTH-P001 --crops-json ...`).
+   - Visually inspect page PNGs in `archive/.../pages/`, determine exact `[x, y, w, h]` normalized boxes for each question (`Q001..QN`), and slice crops into `archive/.../crops/` + `ledger.json` (`hydrogen slice-paper <pdf> --paper-id GYR-MTH-P001 --crops-json ...`).
 2. **Ground Every Calculation & Distractor in `Theta`:**
    - Read the 4-tier rulebook (`rules/common.md` $\to$ `rules/gyaraplus/common.md` $\to$ `rules/gyaraplus/maths/{common,levels}.md`) and the clean crop PNG.
    - Run `hydrogen theta ...` (`calc.eval`, `calc.solve`, `calc.transform`, `calc.formula`, `calc.stats`, `calc.analyze_graph`) for every step, exact intermediate value, and all 5 `A–E` MCQ choices.
    - If a question requires a recreated clean photograph, illustration, audio clip, or short video, generate the clean asset and embed it via `hydrogen put-asset`.
 3. **Author `QuestionPackage` (`Steps × Sub-Levels 9 → 1`) & Pass Both Gates:**
-   - Save the compiled package to `products/<product>/archive/<subject>/<paper_id>/<QID>.json` (fanning out parallel Antigravity subagents across independent questions when compiling full papers).
+   - Save the compiled package to `products/<product>/<subject>/archive/<paper_id>/<QID>.json` (fanning out parallel Antigravity subagents across independent questions when compiling full papers).
    - **Gate 1 (Deterministic `< 1 ms`):** `hydrogen verify-question <QID>.json` (verifies Theta math, MCQ uniqueness, Carbon protocol types, Warm-Paper colors, 5 font voices + `PennstanderMath`, `\htmlId` execution order, non-repetitive contiguous `9..1` levels, and Clean-Room anonymization).
    - **Gate 2 (Headless Carbon Layout & Visual Check):** `hydrogen capture-carbon <QID> --check-bounds --out /tmp/<QID>.png` (verifies zero token/object bounding-box collisions on `:7420` and renders the actual board PNG for visual inspection).
 4. **Atomic Vault Upsert & Dashboard Refresh:**
-   - Run `hydrogen upsert-question <QID>.json --pack` (or `upsert-paper`), then `hydrogen status --html` to refresh `ledger.json` and `products/<product>/status.html`.
+   - Run `hydrogen upsert-question <QID>.json --pack` (or `upsert-paper`), then `hydrogen status --html` to refresh `ledger.json` and `products/<product>/<subject>/status.html`.
 
 ### Workflow C — Live Interactive Preview & `Snap Board` Comment Capture on Carbon
 1. Connect Hydrogen's live two-way `--watch` bridge to Carbon:
@@ -123,7 +124,7 @@ Whenever starting a new Antigravity session (or checking overall product progres
 
 ### Workflow D — Resolving Comments, Creating Replicas & Topic Cards
 1. Run `hydrogen comments list` to view open feedback.
-2. Run `hydrogen comments show <comment-id> --export-dir /tmp/cmt` to inspect the comment alongside its `Snap Board` PNG and `private-xref.json` original crop.
+2. Run `hydrogen comments show <comment-id> --export-dir /tmp/cmt` to inspect the comment alongside its `Snap Board` PNG and `ledger.json` original crop.
 3. Patch the question JSON, verify via `verify-question` + `capture-carbon`, `upsert-question` (automatically recording the prior snapshot in `course_question_revisions`), and run `hydrogen comments resolve <comment-id> --note "..."`.
 
 ---
@@ -135,7 +136,7 @@ Whenever starting a new Antigravity session (or checking overall product progres
 ├── .cargo/config.toml                      # `git-fetch-with-cli = true` (uses SSH keys for private GitHub deps)
 ├── .env                                    # GIT-IGNORED: Local secrets & endpoints (HYDROGEN_LESSON_KEY, CARBON_WS_URL)
 ├── .env.example                            # GIT-TRACKED: Template for `.env`
-├── .gitignore                              # Ignores target/, .env*, *.sqlite*, *.keys.json, *.raphs, inbox/, archive/, private-xref.json, ledger.json, status.html
+├── .gitignore                              # Ignores target/, .env*, *.sqlite*, *.keys.json, *.raphs, inbox/, archive/, ledger.json, status.html
 ├── Cargo.toml                              # Rust Edition 2024 manifest (forbid unsafe; deny unwrap/expect/panic)
 ├── hydrogen.toml                           # Workspace defaults (products_dir, rules_dir, carbon_ws_url, device_id)
 ├── README.md                               # Top-level index
@@ -158,18 +159,18 @@ Whenever starting a new Antigravity session (or checking overall product progres
 │   ├── alevel/                             # Tier 2..4: A-Level (`maths`, `physics`)
 │   ├── primary/                            # Tier 2..4: Primary KS2 (`maths`)
 │   └── infant/                             # Tier 2..4: Infant EYFS/KS1 (`maths`)
-├── products/                               # Multi-product root (`assets/` TRACKED; raw/vault/ledger data GIT-IGNORED)
+├── products/                               # Multi-product root (`assets/` TRACKED; sub-product folders GIT-IGNORED)
 │   ├── gyaraplus/
-│   │   ├── assets/                         # GIT-TRACKED: `gyara-blue.png` (GYR-LOGO-BLUE), `gyara-white.png` (GYR-LOGO-WHITE), `.svg`
-│   │   ├── inbox/{maths,english,...}/      # GIT-IGNORED: Drop raw source PDFs / worksheets here (e.g. Practice-Paper-01.pdf)
-│   │   ├── archive/maths/GYR-MTH-P001/     # GIT-IGNORED: Archived source PDF, 180 DPI `pages/`, `crops/`, & compiled `<QID>.json`
-│   │   ├── private-xref.json               # GIT-IGNORED: Local-only map (`GYR-MTH-P001-Q001` <-> PDF page & bbox)
-│   │   ├── ledger.json                     # GIT-IGNORED: Product-wide SHA-256 inbox inventory, paper/topic progress & task queue
-│   │   ├── status.html                     # GIT-IGNORED: Auto-generated Warm-Paper visual status & side-by-side crop dashboard
-│   │   ├── gyara-maths.sqlite              # GIT-IGNORED: Live SQLCipher 4.14 L7 working container (+ `.keys.json` sidecar)
-│   │   └── gyara-maths.raphs               # GIT-IGNORED: Packed single-file `.raphs` bundle
+│   │   ├── assets/                         # GIT-TRACKED shared brand logos: `gyara-blue.png`, `gyara-white.png`, `.svg`
+│   │   └── maths/                          # Sub-product folder (created ONLY when working on `gyaraplus/maths`)
+│   │       ├── inbox/                      # GIT-IGNORED: Drop raw source PDFs / worksheets here (e.g. Practice-Paper-01.pdf)
+│   │       ├── archive/GYR-MTH-P001/       # GIT-IGNORED: Archived source PDF, 180 DPI `pages/`, `crops/`, & compiled `<QID>.json`
+│   │       ├── ledger.json                 # GIT-IGNORED: Unified sub-product ledger (SHA-256 sources, pages/bbox crops, progress, replica lineage & tasks)
+│   │       ├── status.html                 # GIT-IGNORED: Self-contained Warm-Paper dashboard strictly for `gyaraplus/maths`
+│   │       ├── gyara-maths.sqlite          # GIT-IGNORED: Live SQLCipher 4.14 L7 working container (+ `.keys.json` sidecar)
+│   │       └── gyara-maths.raphs           # GIT-IGNORED: Deliverable single-file `.raphs` sub-product bundle
 │   └── gcse/
-│       └── {assets,inbox,archive}/
+│       └── assets/                         # Sub-product folders (`maths/`, `physics/`) created only when worked on
 ├── src/
 │   ├── lib.rs                              # Crate module exports & `VERSION`
 │   ├── main.rs                             # Zero-dependency CLI dispatcher & interactive two-way `--watch` loop
@@ -185,18 +186,20 @@ Whenever starting a new Antigravity session (or checking overall product progres
 │   │   ├── mod.rs                          # Thread-safe `VaultManager` (`tokio::sync::Mutex<Memory>`, Rule A6)
 │   │   └── seed.rs                         # Idempotent `GYR-MTH` metadata, `GYR-LOGO-BLUE`/`WHITE` PNG blobs, 8 topics & 10 question types
 │   ├── carbon/
-│   │   ├── mod.rs                          # Async `CarbonClient` WS driver (`connect`, `ping`, `send_batch`, `get_state`, `capture_board`, events)
+│   │   ├── mod.rs                          # Async `CarbonClient` WS driver (`connect`, `ping`, `send_batch`, `get_state`, `capture_board`, `send_interaction`, events)
+│   │   ├── bounds.rs                       # Deterministic `getState(includeTokens: true)` AABB overlap & out-of-pane clipping inspector
 │   │   ├── catalog.rs                      # `CourseCatalogSnapshot` -> `SetCatalogParams` (`full-stage`, 12-subject mineral palette)
+│   │   ├── feedback.rs                     # Two-way `--watch` persistence (`comment.saved`, `comment.deleted`, `create-replica`, `chrome.setFeedback`)
 │   │   └── preview.rs                      # Split-board `(part, step, sublevel, substep, answer)` batch builder & live event reducer
 │   ├── ingest/
 │   │   ├── slicer.rs                       # Pure-Rust `hayro` PDF rasterizer + `png` cropper (`PagesOnly`, `AutoWhitespaceBands`, `ExplicitCrops`)
-│   │   ├── xref.rs                         # Atomic `PrivateXrefStore` (`private-xref.json`)
-│   │   ├── ledger.rs                       # (Phase 3.1) Product authoring `ledger.json` & SHA-256 inbox tracker
-│   │   └── report.rs                       # (Phase 3.1) Self-contained Warm-Paper `status.html` static report generator
+│   │   ├── ledger.rs                       # Unified sub-product `ledger.json` (SHA-256 sources, page/bbox crops, progress, replica lineage & tasks)
+│   │   └── report.rs                       # Self-contained Warm-Paper `status.html` static report generator
 │   └── compiler/
 │       └── gate.rs                         # Deterministic Quality Gate (Theta + Carbon + Warm-Paper + 5 Font Voices + KaTeX + Clean-Room)
 └── tests/
-    └── phase2_pipeline.rs                  # End-to-end integration test (Rules -> Slice -> Gate -> Vault -> Carbon WS -> Clean Export)
+    ├── phase2_pipeline.rs                  # End-to-end integration test (Rules -> Slice -> Gate -> Vault -> Carbon WS -> Clean Export)
+    └── phase3_ledger_and_carbon.rs         # End-to-end Phase 3 test (SHA-256 ledger, status.html, two-way `--watch`, put-asset, comments & headless captureBoard)
 ```
 
 ---
@@ -253,22 +256,22 @@ cargo run --quiet -- doctor --carbon ws://192.168.68.64:7420/carbon
 # Initialize / idempotently seed `gyara-maths.sqlite` (+ optional `--pack` into `gyara-maths.raphs`)
 cargo run --quiet -- init-vault --product gyaraplus --subject maths --pack
 
-# (Phase 3.1) Inspect product-wide inbox queue, paper/topic progress & open comments (+ emit `products/gyaraplus/status.html`)
-cargo run --quiet -- status --product gyaraplus --html
+# Inspect active sub-product inbox queue, paper/topic progress & open comments (+ emit `products/gyaraplus/maths/status.html`)
+cargo run --quiet -- status --product gyaraplus --set-expected GYR-MTH-P001 50 --html
 ```
 
-### 6.2 Clean-Room PDF / Image Slicing (`inbox/` → `archive/` + `private-xref.json` + `ledger.json`)
+### 6.2 Clean-Room PDF / Image Slicing (`inbox/` → `archive/` + `ledger.json`)
 ```bash
-# 1. Render PDF pages to 180 DPI PNGs in `archive/maths/GYR-MTH-P001/pages/` for inspection
-cargo run --quiet -- slice-paper products/gyaraplus/inbox/maths/Practice-Paper-01.pdf \
+# 1. Render PDF pages to 180 DPI PNGs in `products/gyaraplus/maths/archive/GYR-MTH-P001/pages/` for inspection
+cargo run --quiet -- slice-paper products/gyaraplus/maths/inbox/Practice-Paper-01.pdf \
   --paper-id GYR-MTH-P001 --dpi 180 --pages 1-6 --pages-only
 
-# 2. Slice a single question crop by normalized [0..1] bbox (`x,y,w,h`) into `archive/.../crops/` + `private-xref.json`
-cargo run --quiet -- slice-paper products/gyaraplus/inbox/maths/Practice-Paper-01.pdf \
+# 2. Slice a single question crop by normalized [0..1] bbox (`x,y,w,h`) into `archive/.../crops/` + `ledger.json`
+cargo run --quiet -- slice-paper products/gyaraplus/maths/inbox/Practice-Paper-01.pdf \
   --paper-id GYR-MTH-P001 --id GYR-MTH-P001-Q001 --page 2 --bbox 0.06,0.05,0.88,0.22
 
 # 3. Slice a batch of crops from a JSON manifest (`Vec<CropSpec>`)
-cargo run --quiet -- slice-paper products/gyaraplus/inbox/maths/Practice-Paper-01.pdf \
+cargo run --quiet -- slice-paper products/gyaraplus/maths/inbox/Practice-Paper-01.pdf \
   --paper-id GYR-MTH-P001 --crops-json /tmp/p001-crops.json
 ```
 
@@ -286,7 +289,7 @@ cargo run --quiet -- theta calc.analyze_graph '{"expr":"x^2 - 4*x + 3","x_min":-
 ### 6.4 Quality Gate, Headless Carbon Capture, Media Assets & Vault Upsert
 ```bash
 # Run deterministic Theta + Carbon + Warm-Paper + 5-Voice + KaTeX + Clean-Room gates (`< 1 ms`)
-cargo run --quiet -- verify-question products/gyaraplus/archive/maths/GYR-MTH-P001/GYR-MTH-P001-Q015.json
+cargo run --quiet -- verify-question products/gyaraplus/maths/archive/GYR-MTH-P001/GYR-MTH-P001-Q015.json
 
 # (Phase 3.3) Render onto headless Carbon (:7420), check object/token AABB bounds, and save PNG snapshot
 cargo run --quiet -- capture-carbon GYR-MTH-P001-Q015 --part a --step S01 --level 9 \
@@ -296,8 +299,8 @@ cargo run --quiet -- capture-carbon GYR-MTH-P001-Q015 --part a --step S01 --leve
 cargo run --quiet -- put-asset /tmp/clean-photo.png --asset-id GYR-MTH-P001-Q018-IMG01 --alt "Wooden prism blocks"
 
 # Verify and atomically upsert a single question or whole paper into `gyara-maths.sqlite` (+ `--pack`)
-cargo run --quiet -- upsert-question products/gyaraplus/archive/maths/GYR-MTH-P001/GYR-MTH-P001-Q001.json --pack
-cargo run --quiet -- upsert-paper products/gyaraplus/archive/maths/GYR-MTH-P001/paper.json --pack
+cargo run --quiet -- upsert-question products/gyaraplus/maths/archive/GYR-MTH-P001/GYR-MTH-P001-Q001.json --pack
+cargo run --quiet -- upsert-paper products/gyaraplus/maths/archive/GYR-MTH-P001/paper.json --pack
 
 # Inspect L7 catalog snapshot (or Carbon `chrome.setCatalog` Full-Stage JSON)
 cargo run --quiet -- catalog
@@ -318,10 +321,11 @@ cargo run --quiet -- preview-carbon GYR-MTH-P001-Q015 --part a --step S01 --leve
 # Launch interactive two-way `--watch` session (streams Gallery/Steps/L9..L1 AND saves `Snap Board` comments into `.sqlite` + `ledger.json`!)
 cargo run --quiet -- preview-carbon --catalog --watch --carbon ws://192.168.68.64:7420/carbon
 
-# (Phase 3.3) Inspect, export attachments, and resolve `Snap Board` comments from CLI
-cargo run --quiet -- comments list
+# Inspect, export attachments/source crops, resolve, or delete `Snap Board` comments from CLI
+cargo run --quiet -- comments list [--status open|resolved|all] [--target GYR-MTH-P001-Q015]
 cargo run --quiet -- comments show <comment-id> --export-dir /tmp/comment-review
 cargo run --quiet -- comments resolve <comment-id> --note "Adjusted barModel label spacing in S02:L03"
+cargo run --quiet -- comments delete <comment-id>
 ```
 
 ---
@@ -404,8 +408,8 @@ cargo clippy --all-targets -- -D warnings && cargo test
 cargo run --quiet -- doctor --carbon ws://127.0.0.1:7420/carbon
 
 # 5. Verify reference compiled blueprints in `archive/`
-cargo run --quiet -- verify-question products/gyaraplus/archive/maths/GYR-MTH-P001/GYR-MTH-P001-Q001.json
-cargo run --quiet -- verify-question products/gyaraplus/archive/maths/GYR-MTH-P001/GYR-MTH-P001-Q015.json
+cargo run --quiet -- verify-question products/gyaraplus/maths/archive/GYR-MTH-P001/GYR-MTH-P001-Q001.json
+cargo run --quiet -- verify-question products/gyaraplus/maths/archive/GYR-MTH-P001/GYR-MTH-P001-Q015.json
 
 # 6. Optional: Open http://192.168.68.52:7420/ on MacBook/iPad and launch interactive two-way `--watch`
 cargo run --quiet -- preview-carbon --catalog --watch --carbon ws://127.0.0.1:7420/carbon

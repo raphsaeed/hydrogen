@@ -38,6 +38,7 @@ tokio = { version = "1", default-features = false, features = ["rt-multi-thread"
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 
-# Pure-Rust PDF rasterization & PNG image slicing (`unsafe_code = "forbid"`, zero C/C++ pdfium/poppler/opencv)
+# Pure-Rust PDF rasterization, PNG image slicing & SHA-256 file inventory (`unsafe_code = "forbid"`)
 hayro = "0.9"
 png = "0.18"
+sha2 = "0.11"

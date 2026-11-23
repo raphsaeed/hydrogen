@@ -19,6 +19,8 @@
 products/**/inbox/
 products/**/archive/
 products/**/private-xref.json
+products/**/ledger.json
+products/**/status.html
 
 # OS / Editor files
 .DS_Store

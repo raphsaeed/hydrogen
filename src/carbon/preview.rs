@@ -5,13 +5,14 @@ use carbon_protocol::{
     CalculatorMode, CarbonCommand, CarbonEvent, CatalogSelectionKind, ChromePatch,
     ChromeTimerParams, ChromeVisibility, ClearParams, GridPitch, ImportantIconStyle,
     ItemNavigationKind, LayoutMode, PartTab, SetCatalogOpenParams, SetDictionaryParams,
-    SetLayoutParams, SetSurfaceParams, SetThemeParams, StepActionChip, StepNavigationKind,
-    SurfaceKind, SurfaceSpec, ThemeId, TimelineParams, TimerControlOp, TimerMode, TimerTarget,
+    SetLayoutParams, SetSurfaceParams, SetThemeParams, SpeedPreset, SpeedSpec, StepActionChip,
+    StepNavigationKind, SurfaceKind, SurfaceSpec, ThemeId, TimelineParams, TimerControlOp,
+    TimerMode, TimerTarget,
 };
 use memory_core_rs::CourseQuestion;
 use serde_json::json;
 
-use crate::domain::{QuestionBlueprint, SolutionBlueprint};
+use crate::domain::{QuestionBlueprint, QuestionPackage, SolutionBlueprint};
 use crate::error::{HydrogenError, Result};
 
 /// Selection coordinates for previewing a compiled question on Carbon.
@@ -104,9 +105,7 @@ pub fn build_question_preview_batch(
             .iter()
             .position(|st| {
                 st.step_id.eq_ignore_ascii_case(sid)
-                    || sid
-                        .parse::<u32>()
-                        .is_ok_and(|n| n == st.step_number)
+                    || sid.parse::<u32>().is_ok_and(|n| n == st.step_number)
             })
             .ok_or_else(|| {
                 HydrogenError::Validation(format!(
@@ -276,7 +275,10 @@ pub fn build_question_preview_batch(
             entries: q_bp.dictionary.clone(),
         }));
     }
-    if let Some(sec) = cq.recommended_time_sec.and_then(|s| u32::try_from(s.max(1)).ok()) {
+    if let Some(sec) = cq
+        .recommended_time_sec
+        .and_then(|s| u32::try_from(s.max(1)).ok())
+    {
         commands.push(CarbonCommand::ChromeTimer(ChromeTimerParams {
             target: TimerTarget::Item,
             op: TimerControlOp::Configure {
@@ -301,7 +303,9 @@ pub fn build_question_preview_batch(
 
     // 6. Optional `substeps[]` breakdown card(s)
     if let Some(sub_up_to) = sel.substep {
-        let limit = (sub_up_to as usize).saturating_add(1).min(target_step.substeps.len());
+        let limit = (sub_up_to as usize)
+            .saturating_add(1)
+            .min(target_step.substeps.len());
         for ss in &target_step.substeps[..limit] {
             commands.push(CarbonCommand::Timeline(TimelineParams::Substep));
             commands.extend(ss.carbon_commands.iter().cloned());
@@ -341,6 +345,86 @@ pub fn build_question_preview_batch(
         narration: effective_narration,
         commands,
     })
+}
+
+/// Build an atomic `CarbonCommand` preview batch directly from an un-upserted `QuestionPackage`
+/// (enabling `hydrogen capture-carbon <file.json> --check-bounds` before `upsert-question`).
+pub fn build_package_preview_batch(
+    pkg: &QuestionPackage,
+    sel: &PreviewSelection,
+) -> Result<BuiltPreviewBatch> {
+    let input = pkg.to_course_question_input()?;
+    let synthetic = CourseQuestion {
+        question_id: input.question_id,
+        container_kind: input.container_kind,
+        paper_id: input.paper_id,
+        section_id: input.section_id,
+        chapter_id: input.chapter_id,
+        stimulus_id: input.stimulus_id,
+        seq_no: input.seq_no,
+        label: input.label,
+        title: input.title,
+        answer_format: input.answer_format,
+        question_type_id: input.question_type_id,
+        difficulty: input.difficulty,
+        tier: input.tier,
+        marks: input.marks,
+        calculator_mode: input.calculator_mode,
+        recommended_time_sec: input.recommended_time_sec,
+        part_count: input.part_count,
+        step_count: input.step_count,
+        min_sublevel: input.min_sublevel,
+        max_sublevel: input.max_sublevel,
+        is_replica: input.is_replica,
+        parent_question_id: input.parent_question_id,
+        qa_status: input.qa_status,
+        stem_text: input.stem_text,
+        question_json: input.question_json,
+        solution_json: input.solution_json,
+        has_vector: false,
+        open_comment_count: 0,
+        topics: input.topics,
+        concept_links: Vec::new(),
+        assets: Vec::new(),
+        created_at: 0,
+        created_by: "hydrogen".to_string(),
+        updated_at: 0,
+        updated_by: "hydrogen".to_string(),
+        version: 1,
+        hlc: String::new(),
+        device_id: String::new(),
+    };
+    build_question_preview_batch(&synthetic, sel)
+}
+
+/// Override progressive stroke animations to `SpeedPreset::Instant` so headless `captureBoard`
+/// rasterizes 100% of equations, diagrams, and annotations on frame 0.
+pub fn force_instant_speed(commands: &mut [CarbonCommand]) {
+    let instant = SpeedSpec::Preset(SpeedPreset::Instant);
+    for cmd in commands {
+        match cmd {
+            CarbonCommand::Write(w) => {
+                w.speed = instant.clone();
+                w.beats.clear();
+            }
+            CarbonCommand::Place2D(p) => {
+                p.speed = instant.clone();
+            }
+            CarbonCommand::Scribble(s) => {
+                s.speed = instant.clone();
+            }
+            CarbonCommand::Rub(r) => {
+                r.speed = instant.clone();
+            }
+            CarbonCommand::Modify(m) => {
+                m.speed = instant.clone();
+            }
+            CarbonCommand::Annotate(a) => {
+                a.speed = instant.clone();
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Apply a live `CarbonEvent` from Carbon's Gallery, Part Tabs, Step Transport, `L9..L1` Chips,
@@ -415,7 +499,8 @@ pub fn apply_interactive_event(
             false
         }
         CarbonEvent::StepNavigated { action, .. } => {
-            let Some((s_part, cur_step_idx)) = resolve_current_step(current_question_id, sel, questions)
+            let Some((s_part, cur_step_idx)) =
+                resolve_current_step(current_question_id, sel, questions)
             else {
                 return false;
             };
@@ -455,7 +540,8 @@ pub fn apply_interactive_event(
             }
         }
         CarbonEvent::StepActionRequested { action_id, .. } => {
-            let Some((s_part, cur_step_idx)) = resolve_current_step(current_question_id, sel, questions)
+            let Some((s_part, cur_step_idx)) =
+                resolve_current_step(current_question_id, sel, questions)
             else {
                 return false;
             };

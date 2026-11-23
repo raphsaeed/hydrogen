@@ -1,8 +1,9 @@
 # Hydrogen — Product & System Requirements Specification (`requirements.md`)
 
 > **Document Status:** Locked Pre-Build Baseline (Aligned with `memory.raphs` Schema `2.3.0` / `memory_core_rs 1.7.0` and `Carbon Protocol v0.1` Book Index & Rich Feedback)  
-> **Scope:** **Hydrogen** — Multi-Product AI Solution Compiler, Replica Generator, Vault Manager & Minimal Local Authoring Console (`Rust + axum + HTML/TS`).  
+> **Scope:** **Hydrogen** — Multi-Product AI Solution Compiler, Replica Generator, Product Authoring Ledger & `L7` `.raphs` Vault Manager (`Pure Rust CLI + Antigravity + Static HTML`).  
 > **Companion Documents:**
+> - Standard Operating Procedure: [`sop.md`](./sop.md)
 > - Ecosystem Diagram: [`gyara-workflow.png`](./gyara-workflow.png)
 > - Overall System Architecture: [`system-architecture.md`](./system-architecture.md)
 > - 9-Level Visual & Pedagogical Rules: [`solution-levels.md`](./solution-levels.md)
@@ -37,7 +38,7 @@ Hydrogen is architected as a reusable curriculum factory across multiple educati
 | Component | Role in Ecosystem | Boundary with Hydrogen |
 | :--- | :--- | :--- |
 | **`papers`** | Raw input sources: PDF exam papers, books/chapters, topic worksheets, worked examples, tests, and image snapshots. | **Input only.** Raw files, scans, cropped snapshots, and **any name/reference to the original source paper/publisher** must **never** appear in the output `.raphs` vault. Only Hydrogen stores a private cross-reference (`private-xref.json`) for verification. |
-| **`hydrogen`** *(This Project)* | Heavy AI Solution Compiler, Replica Generator, Comment Processor & Minimal Local Web Console (`Rust + axum + HTML/TS`). | **Owns all heavy intelligence & authoring:** PDF/image extraction, visual/photo regeneration, Theta verification, `9 → 1` Carbon scene & coordinate authoring, replica creation, comment batch processing, live Carbon preview, and `.raphs` packaging. |
+| **`hydrogen`** *(This Project)* | Heavy AI Solution Compiler Toolkit, Product Ledger, Replica Verifier & Vault Manager (`Pure Rust CLI + Antigravity + status.html`). | **Owns all heavy intelligence & authoring:** PDF/image extraction, product ledger (`ledger.json` + `status.html`), visual/photo regeneration, Theta verification, `9 → 1` Carbon scene & headless visual QA, two-way Carbon `--watch` comment sync, replica/topic workflows, and `.raphs` packaging. |
 | **`<product>-<subject>.raphs`** | Single-file encrypted SQLite course vault (e.g., `gyara-maths.raphs`) on `memory.raphs` **Schema `2.3.0` (`L7 Course Layer`)**. | **Hydrogen's primary output & authoring feedback store.** Indexes Books, Chapters, Papers, Sections, Topics, Question Types, Shared Stimuli, Questions, `9 → 1` Solutions, Brand Logo & Media Blobs, and Author Comments; unlocked via **one simple Lesson Key**. **Contains zero student statistics.** |
 | **`theta`** (`theta_calc`) | Pure-Rust deterministic symbolic/numerical CAS, unit solver, 313-formula registry & 120 FPS Graph VM. | Linked directly into Hydrogen (`theta_calc`) at **compile time** to verify every step, fraction, root, graph landmark, and MCQ distractor; also used by SIGMA & Carbon at runtime. |
 | **`carbon`** (`carbon-shell`) | Standalone 120Hz 2-way interactive GPU whiteboard (`Carbon Protocol v0.1`, port `7420`). | Renders the Full-Stage Dark-Slate Course & Book Index Gallery (`displayMode: "full-stage"`, 3-level drill-down, centered `brandLogo`, `△` important & reminder/AI chips) + Slide-Over Left Band, Split Question \| Working panes, 22 educational 2D macros + 3D stage, and the Multi-Comment Drawer with 1-Click **`Snap Board`** PNG attachments (`authorMode: true` in Hydrogen). |
@@ -64,6 +65,8 @@ hydrogen/
 │   │   ├── archive/                                 # GIT-IGNORED: Processed raw source files & crops (NEVER in .raphs)
 │   │   │   └── maths/
 │   │   ├── private-xref.json                        # GIT-IGNORED: Hydrogen-only map (GYR-MTH-P001 <-> source PDF/page/bbox)
+│   │   ├── ledger.json                              # GIT-IGNORED: Product-wide SHA-256 inbox inventory, paper/topic progress & task queue
+│   │   ├── status.html                              # GIT-IGNORED: Self-contained Warm-Paper visual status & side-by-side crop dashboard
 │   │   ├── gyara-maths.raphs                        # GIT-IGNORED: Live L7 course vault (SQLCipher)
 │   │   ├── gyara-english.raphs
 │   │   ├── gyara-verbal-reasoning.raphs
@@ -156,31 +159,29 @@ hydrogen/
 ---
 
 ### FR-9: Live Teaching Feedback Loop (Carbon Comments + `"Snap Board"` $\leftrightarrow$ Hydrogen)
-1. In Carbon (`chrome.update` with `authorMode: true` for owner sessions, `false` for students), comments + 1-click **`Snap Board`** PNG screenshots / uploaded images emit `comment.saved` (`FeedbackEntry`) and are persisted into `course_comments` + `course_comment_attachments` inside `gyara-maths.raphs`.
-2. Hydrogen processes open comments (via Web UI click, CLI, or daily schedule):
+1. In Carbon (`chrome.update` with `authorMode: true` for owner sessions via `hydrogen preview-carbon --watch`, `false` for students), comments + 1-click **`Snap Board`** PNG screenshots / uploaded images emit `comment.saved` (`FeedbackEntry`) and are persisted straight into `course_comments` + `course_comment_attachments` inside `gyara-maths.raphs` (while `"create-replica"` card actions record tasks in `ledger.json`).
+2. Hydrogen + Antigravity process open comments via `hydrogen comments`:
    - Cross-checks `private-xref.json` (original PDF crop) + attached board screenshot,
    - Updates the target question/step/sub-level (with prior version auto-saved in `course_question_revisions`) or creates requested replicas/topics,
    - Calls `resolve_course_comment(...)`, and extracts `"engine"` notes (`@theta` / `@carbon`) into an ecosystem developer backlog.
 
 ---
 
-### FR-10: Minimal "Hydrogen Console" Local Web UI — Light, Soft Card-Grid Theme (`Rust axum + HTML/TS`)
-Hydrogen serves a fast, clean 4-view local web interface (`http://127.0.0.1:7430`) designed in a **light, soft card-grid theme** tailored for comfortable authoring and side-by-side PDF crop inspection:
-- **Light, Soft Aesthetic + Vault Brand Logo:** Soft warm-porcelain canvas (`#F6F7FB`), clean white header bar displaying the product's light-mode **`brandLogo` (`GYR-LOGO-BLUE` / `gyara-blue.png`)** directly from the `.raphs` vault alongside pill breadcrumbs (`[🏠] > [Subject] > [Paper]`) and soft filter pills, paired with the same intuitive 3-level card-grid structure (Subject Vault Cards $\to$ Papers/Chapters/Topics grid $\to$ Question cards) using soft pastel card states (`#FFFFFF` default, `#EFF6FF` soft sky compiling/in-progress, `#ECFDF5` soft mint verified, `#FEF2F2` soft rose-coral for open `fix` comments or gate errors, and `#EDE9FE`/`#6D28D9` soft violet `AI` replica badges).
-1. **View 1 — Vault Explorer & Soft-Light Card Grid:** Open `gyara-maths.raphs` (or switch across subject vaults); drill down from Subject Vault Cards $\to$ 3–4 column Papers/Chapters/Topics grid $\to$ 4–6 column Question/Card grid, filtering by Real Papers, `AI` Replicas, Topic, Difficulty (`1–5`), Format (`MCQ`/`Written`), and Open Comments.
-2. **View 2 — Question, `9 → 1` Level & Side-by-Side Source Inspector:** View stem, MCQ choices, and all `Steps × Sub-Levels 9..1` alongside the private original PDF crop (`private-xref.json`); trigger *Create Replicas*, *Modify/Regenerate*, *Link Topic*, and ***"Live Preview on Carbon"*** (`ws://127.0.0.1:7420/carbon` with `authorMode: true`, Full-Stage / Slide-Over Catalog sync, and live level-stepping).
-3. **View 3 — Comments & Screenshots Inbox:** Inspect `course_comments` + `Snap Board` thumbnails, trigger single/batch Hydrogen fixes, and view `course_question_revisions` diffs.
-4. **View 4 — Ingestion, Live Batch Progress & Clean Customer Export:** Drop PDFs/images, watch live per-question compilation progress over WebSocket, and run 1-click `export_clean_course_bundle`.
+### FR-10: Product Authoring Ledger (`ledger.json`) & Static Warm-Paper `status.html` Dashboard
+Because `<product>-<subject>.raphs` is Clean-Room anonymized and scoped per subject, Hydrogen maintains a lightweight Git-ignored product ledger paired with a zero-server static HTML report (`hydrogen status --html`):
+1. **Zero-Drift Product Ledger (`products/<product>/ledger.json`):**
+   - Scans `inbox/<subject>/` and `archive/<subject>/` with SHA-256 deduplication so duplicate PDFs are detected automatically even if renamed.
+   - Tracks expected question counts per paper (`GYR-MTH-P001`: `50` items), per-question pipeline stage (`cropped` / `verified`), and pending replica/topic tasks without duplicating compiled `.raphs` rows.
+2. **Self-Contained Warm-Paper `status.html` (`products/<product>/status.html`):**
+   - Merges live `CourseCatalogSnapshot`s across all subject `.sqlite` vaults with `ledger.json` and `private-xref.json`, rendering Subject summary cards, Paper progress bars, Topic coverage tables, side-by-side `archive/` crop vs. compiled stem inspection, and open `Snap Board` comment thumbnails—zero local web server required, while **Carbon (`:7420`)** provides the live 120Hz interactive gallery and `Level 9 → 1` stage.
 
 ---
 
-## 4. Technical Stack & Dual AI Execution Strategy
+## 4. Technical Stack & Execution Strategy
 
-- **Stack:** **100% Rust** (`axum` + `tokio` + CLI, linking `theta_calc` and `memory_core_rs 1.7.0` natively in-process) + **Minimal HTML/TypeScript UI**.
-- **AI Brain:** **Gemini 4** with a **Multi-Step Agentic Verification Loop** (`Extract → Theta Tool Verify → Synthesize L9..L1 → Carbon Schema/Headless & Visual Self-Check → Auto-Repair → Upsert to L7`).
-- **Dual Execution Modes:**
-  1. **Interactive Antigravity Mode (Via Hydrogen CLI):** Process initial test questions/papers interactively inside Antigravity using Hydrogen's deterministic CLI commands (`slice`, `verify`, `upsert`, `preview-carbon`) while observing the live loop across `gyara-maths.raphs` + Carbon + Theta.
-  2. **Native Rust Gemini 4 Batch & UI Engine:** Run single-click UI actions, parallel paper batches, and scheduled comment runs directly inside the Rust service (supporting both real-time Gemini API and 50%-discounted Gemini Batch API).
+- **Stack:** **100% Pure Rust** (`hydrogen` CLI linking `theta_calc`, `memory_core_rs 1.7.0`, `carbon-protocol`, and `hayro` + `png` natively in-process) + **Self-Contained Static `status.html`**.
+- **Primary Authoring Conductor:** **Antigravity** (interactive & background SSH sessions + parallel subagents) driving `hydrogen` CLI (`status`, `slice-paper`, `theta`, `verify-question`, `capture-carbon`, `put-asset`, `upsert-question`, `comments`, `preview-carbon --watch`, `pack`).
+- **Modular Future API Extension (Phase 8):** Pluggable Rust traits (`src/ai/`: `ReasoningModel`, `ImageModel`, `VideoModel`) for optional external API batch automation (`gemini-4-carbon`, `gemini-nano-banana-2.1`, `gemini-omni-1.2-flash`) without coupling vendor SDKs into Hydrogen's core.
 
 ---
 
@@ -188,13 +189,13 @@ Hydrogen serves a fast, clean 4-view local web interface (`http://127.0.0.1:7430
 
 | # | Area | Locked Decision |
 | :---: | :--- | :--- |
-| **1** | **Products & Brand Assets** | `products/` is **tracked in Git** (storing brand logos & product docs like `products/gyaraplus/assets/gyara-{white,blue}.{png,svg}`, embedded as `blobs` in `.raphs`), while `inbox/`, `archive/`, `private-xref.json`, and `.raphs` vaults are Git-ignored. |
+| **1** | **Products & Brand Assets** | `products/` is **tracked in Git** (storing brand logos & product docs like `products/gyaraplus/assets/gyara-{white,blue}.{png,svg}`, embedded as PNG `blobs` in `.raphs`), while `inbox/`, `archive/`, `private-xref.json`, `ledger.json`, `status.html`, and `.raphs` vaults are Git-ignored. |
 | **2** | **9-Level Scale** | **Question-relative (`9 → 1`):** `L9` = expected exam working; `L8..L1` = progressive visual/infant scaffolding; invisible to learner; err toward **more** levels. |
 | **3** | **Hydrogen vs. SIGMA** | **Heavy Hydrogen + Theta, Thin SIGMA:** Hydrogen pre-compiles all math, 2D/3D Carbon coordinates/macros, brand logos, and narration scripts; SIGMA only narrates, listens, merges `<student>.raphs` stats/reminders, and navigates. |
-| **4** | **Source Privacy** | Zero source PDFs/crops and zero external paper names in `.raphs`; visuals/photos cleanly regenerated; private cross-ref in `private-xref.json` only. |
+| **4** | **Source Privacy & Ledger** | Zero source PDFs/crops and zero external paper names in `.raphs`; visuals/photos cleanly regenerated; local source tracking & queue state kept strictly in Git-ignored `private-xref.json` + `ledger.json` + `status.html`. |
 | **5** | **Question Format** | Default **5-option MCQ (`A–E`)** for Gyara 11+ (Theta-verified trap distractors) + `written` / `interactive` / `drawing` supported. |
 | **6** | **Database Schema** | Native SQLite **Layer `L7` (`course_*` tables)** in `memory.raphs` **Schema `2.3.0` (`memory_core_rs 1.7.0`)**—indexing Books, Chapters, Papers, Sections, Topics, Types, Stimuli, Questions, Brand/Media Blobs & Comments. |
-| **7** | **Learner Statistics** | **Strictly excluded from course `.raphs` vaults**; stored in `<student>.raphs` (`important` `△`, `15d` reminders, crimson `dueReminder` states, mastery) and merged by SIGMA at runtime for Carbon's Gallery (`chrome.setCatalog`). |
+| **7** | **Learner Statistics** | **Strictly excluded from course `.raphs` vaults**; stored in `<student>.raphs` (`important` `△`, `15d` reminders, `#FFF1F2` `dueReminder` states, mastery) and merged by SIGMA at runtime for Carbon's Gallery (`chrome.setCatalog`). |
 | **8** | **Lesson Key & Export** | Single simple Lesson Key (`open_with_passphrase`); customer release uses `export_clean_course_bundle` stripping comments & history while preserving brand/media blobs. |
-| **9** | **Unified Light, Soft Theme (`Carbon` + `Hydrogen`)** | **Both Carbon (`config.setTheme: "warm-paper"`, `displayMode: "full-stage"`) and Hydrogen's Web Console** use a unified **Light, Soft Card-Grid Theme** with **`GYR-LOGO-BLUE` (`gyara-blue.png`)** loaded from the `.raphs` vault and soft muted subject accents (`#5B7DB1` Maths, `#4D8B7A` English, `#7A6BA8` VR, `#A8647A` NVR). |
-| **10** | **Stack & AI Modes** | **Rust (`axum` + CLI) + Minimal Light-Soft HTML/TS UI**, supporting **both** interactive Antigravity authoring and native Rust Gemini 4 API batching. |
+| **9** | **Unified Warm-Paper Theme** | **Carbon (`config.setTheme: "warm-paper"`, `displayMode: "full-stage"`) and Hydrogen's `status.html`** use the unified **Warm-Paper Editorial Theme** with PNG **`GYR-LOGO-BLUE`** and the 12-subject muted mineral palette (`#5B7DB1` Maths, `#4D8B7A` English, `#7A6BA8` VR, `#A8647A` NVR). |
+| **10** | **Authoring Stack** | **Pure-Rust `hydrogen` CLI + Antigravity + Carbon `:7420` `--watch` + Static `status.html`** (with Zero-Install Browser WASM delivery in Phase 7 and modular API providers in Phase 8). |

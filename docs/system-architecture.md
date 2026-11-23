@@ -3,6 +3,7 @@
 > **Status:** Locked Cross-Component Master Architecture  
 > **Audience:** Engineers & AI Agents working on **Hydrogen**, **SIGMA**, **Carbon**, **Theta**, and **`memory.raphs`** — providing one shared source of truth on **who drives what**, how all five components connect, and where strict boundaries sit.  
 > **Aligned Specifications:**
+> - Standard Operating Procedure & Commands: [`sop.md`](./sop.md)
 > - Visual Workflow Diagram: [`gyara-workflow.png`](./gyara-workflow.png)
 > - Hydrogen Product Requirements: [`requirements.md`](./requirements.md)
 > - Pedagogical & 9-Level Solution Rules: [`solution-levels.md`](./solution-levels.md) + [`../rules/README.md`](../rules/README.md)
@@ -13,21 +14,21 @@
 
 ## 1. Executive Summary & Five Governing Principles
 
-The curriculum and tutoring platform is composed of **five specialized Rust-first components**—**Hydrogen**, **`memory.raphs`**, **Theta**, **Carbon**, and **SIGMA**—separated cleanly between an **Offline/Authoring Compilation Plane** (driven by **Hydrogen**) and a **Live Student Tutoring Plane** (driven by **SIGMA**, running either as a native desktop/tablet app or zero-install in a web browser via WebAssembly).
+The curriculum and tutoring platform is composed of **five specialized Rust-first components**—**Hydrogen**, **`memory.raphs`**, **Theta**, **Carbon**, and **SIGMA**—separated cleanly between an **Offline/Authoring Compilation Plane** (driven by **Hydrogen** + **Antigravity**) and a **Live Student Tutoring Plane** (driven by **SIGMA**, running either as a native desktop/tablet app or zero-install in a web browser via WebAssembly).
 
 ### Five Governing Architectural Principles
 1. **Strict Single-Conductor Rule ("Who Drives What"):**
-   - At **Authoring & Compilation Time**, **Hydrogen** is the **sole active conductor**. It drives `Theta`, `memory.raphs` (`L7`), and `Carbon` (`authorMode: true`).
+   - At **Authoring & Compilation Time**, **Hydrogen** (orchestrated via **Antigravity** over SSH) is the **sole active conductor**. It drives `Theta`, `memory.raphs` (`L7`), and `Carbon` (`authorMode: true`).
    - At **Student Runtime**, **SIGMA** is the **sole active conductor**. It opens two `memory.raphs` vaults (`Course L7` read-only + `Student L1–L6` read/write), drives `Carbon` (`authorMode: false` for students), and calls `Theta` for live answer/slider checks.
    - **Carbon**, **Theta**, and **`memory.raphs`** are **never autonomous orchestrators**: they never call LLMs, never invent curriculum policy, and never talk behind the active conductor's back.
 2. **Heavy Hydrogen + Theta at Compile Time, Thin SIGMA at Runtime:**
    - Small on-device or low-latency voice models (**SIGMA**) hallucinate if asked to derive multi-step algebra or compute 2D/3D whiteboard coordinates on the fly.
-   - Therefore, **Hydrogen** pre-compiles **100% of mathematical derivations** (verified in-process via `theta_calc`), **all 2D/3D Carbon scene/macro coordinates**, `\htmlId` token anchors, MCQ trap diagnostics (`A–E`), brand logo blobs, and plain-English narration scripts across **Question-Relative Sub-Levels `9 → 1`**.
+   - Therefore, **Hydrogen** pre-compiles **100% of mathematical derivations** (verified in-process via `theta_calc`), **all 2D/3D Carbon scene/macro coordinates** (verified against headless `Carbon` bounds & PNG captures), `\htmlId` token anchors, MCQ trap diagnostics (`A–E`), brand logo & media blobs, and plain-English narration scripts across **Question-Relative Sub-Levels `9 → 1`**.
 3. **Two Strictly Separated `memory.raphs` Vault Roles (`Course L7` vs. `Student L1–L6`):**
-   - **`<product>-<subject>.raphs` (`Schema 2.3.0` Layer `L7`, e.g., `gyara-maths.raphs`):** Pure curriculum, brand logos, media blobs, `9 → 1` solutions, and (during authoring) `course_comments`. Unlocked with **one simple Lesson Key**. **Contains ZERO student statistics.**
+   - **`<product>-<subject>.raphs` (`Schema 2.3.0` Layer `L7`, e.g., `gyara-maths.raphs`):** Pure curriculum, brand logos, media blobs, `9 → 1` solutions, and (during authoring) `course_comments` + `course_question_revisions`. Unlocked with **one simple Lesson Key**. **Contains ZERO student statistics.**
    - **`<student>.raphs` (Layers `L1–L6`):** Personal per-learner vault storing attempts, scores, mastery, `important` (`△`) flags, `15d` spaced-repetition reminders, and `dueReminder` states. Merged in memory by **SIGMA** right before sending `chrome.setCatalog` to **Carbon**.
-4. **Zero Source Paper Leakage:**
-   - Raw source PDFs (`inbox/`), cropped page scans (`archive/`), and external school/publisher paper names **never** enter `<product>-<subject>.raphs`. Only Hydrogen's local Git-ignored `private-xref.json` maps `GYR-MTH-P001-Q014` back to its source PDF crop for author QA.
+4. **Zero Source Paper Leakage & Local Product Ledger:**
+   - Raw source PDFs (`inbox/`), cropped page scans (`archive/`), external school/publisher paper names, bounding-box mappings (`private-xref.json`), product ingestion tracking (`ledger.json`), and generated QA dashboards (`status.html`) remain strictly local and Git-ignored inside `products/<product>/`—they **never** enter `<product>-<subject>.raphs` or Git.
 5. **Single Rust Codebase Supporting Both Native Apps & Zero-Install Web Browsers:**
    - Because **Carbon** (`StageRuntime` $\to$ `engine.wasm`) and **Theta** (`theta_calc` $\to$ `theta.wasm`) are pure Rust, the **exact same `main` branches** support both **(a) Native Local Apps** (`carbon-shell` + local `SIGMA` + local `.raphs`) and **(b) Zero-Install Web Browsers** (`carbon-web` WASM + `theta.wasm` in Chrome/Safari/iPad talking over `wss://` to a server-side `SIGMA` + `.raphs` gateway).
 
@@ -35,12 +36,12 @@ The curriculum and tutoring platform is composed of **five specialized Rust-firs
 
 ## 2. The Five Ecosystem Components: Roles, Pins & Strict Boundaries
 
-| Component | Role Type | Repository / Crate Pin | Default Port | What It Owns | What It MUST NEVER Do |
+| Component | Role Type | Repository / Crate Pin | Default Port / Binding | What It Owns | What It MUST NEVER Do |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| **`Hydrogen`** *(This Repo)* | **Authoring Conductor** (`CLI` + `axum` Server + Light-Soft Web UI) | `git@github.com:raphsaeed/hydrogen.git` (`main`) | `:7430` (HTTP + WS) | PDF/image slicing, 4-tier `rules/` loading, Gemini 4 + Antigravity `L9→L1` compilation, Theta verification gate, replica & topic generation, comment processing, live Carbon author preview, and `.raphs` packaging/clean export. | Never runs during student lessons; never stores student stats in `<product>-<subject>.raphs`; never leaks raw PDF scans/names into `.raphs`; never modifies sibling repos. |
+| **`Hydrogen`** *(This Repo)* | **Authoring Conductor & Vault CLI** (Pure-Rust CLI + Product Ledger + Static `status.html`) | `/home/raphspark/projects/hydrogen`<br>`git@github.com:raphsaeed/hydrogen.git` (`main`) | CLI + outbound WS to Carbon `:7420` | PDF/image slicing, product authoring ledger (`ledger.json` + `status.html`), 4-tier `rules/` loading, `L9→L1` blueprint & quality gate (`Theta` + headless `Carbon` `captureBoard`), two-way Carbon `--watch` preview & `Snap Board` comment sync, replica/topic scaffolding, and `.raphs` packaging/clean export. | Never runs during student lessons; never stores student stats in `<product>-<subject>.raphs`; never leaks raw PDF scans/names into `.raphs` or Git; **never modifies sibling repos**. |
 | **`memory.raphs`** (`memory_core_rs`) | **Embedded Encrypted Vault Engine** (Library Crate) | `ssh://git@github.com/raphs-app/raphs.git` (`tag = "memory-core-1.7.0"`, Schema `2.3.0`) | *In-process library* | SQLCipher `4.14` encryption, `L7` `course_*` tables, `L1–L6` learner memory tables, FTS5 + `vec0` RRF search, 3-way ref-counted `blobs`, `< 1 ms` `course_catalog_snapshot()`, and `export_clean_course_bundle()`. | Never opens network ports, never renders UI, and never executes math or LLM calls. Enforces 1 `Memory` handle per vault file per process (Rule A6). |
-| **`Theta`** (`theta_calc`) | **Deterministic CAS & Graph VM** (Library Crate + `.wasm`) | `/home/raphspark/projects/theta/crates/calc-api` (`package = "calc-api"`, crate `theta_calc`) | *In-process library* / `.wasm` | Exact rational/symbolic arithmetic, mixed fractions, equation solving, 313-formula registry (`FIFA`), stats working, 120 FPS Graph VM landmarks, and `\htmlId` KaTeX token emission (`< 50 µs`). | Stateless pure computation: never opens `.raphs` vaults, never calls LLMs, and never initiates network connections on its own. |
-| **`Carbon`** (`carbon-shell` & `carbon-web`) | **120Hz Interactive Whiteboard & Gallery Stage** (Native + WASM) | `ssh://git@github.com/raphsaeed/carbon.git` (`carbon-protocol` crate on `main`) | `:7420` (`:7421` Studio) | Full-Stage Dark-Slate Course Gallery (`displayMode: "full-stage"`), Slide-Over Index, Split `Question \| Working` panes, KaTeX + handwritten strokes, 22 2D macros, 3D math stage, stylus ink/rubber, and `Snap Board` Comment Drawer. | Pure rendering stage & input emitter: **never** opens `.raphs` vaults directly, **never** calls LLMs, and **never** owns student persistence or curriculum rules. |
+| **`Theta`** (`theta_calc`) | **Deterministic CAS & Graph VM** (Library Crate + `.wasm`) | `/home/raphspark/projects/theta/crates/calc-api` (`package = "calc-api"`, crate `theta_calc`) | *In-process library* / `.wasm` | Exact rational/symbolic arithmetic, mixed fractions, equation solving, 313-formula registry (`FIFA`), stats working, 120 FPS Graph VM landmarks, and `\htmlId` KaTeX token emission (`< 50 µs`). | **Read-only sibling.** Stateless pure computation: never opens `.raphs` vaults, never calls LLMs, and never initiates network connections. |
+| **`Carbon`** (`carbon-shell` & `carbon-web`) | **120Hz Interactive Whiteboard & Gallery Stage** (Native, Headless & WASM) | `/home/raphspark/projects/carbon` *(prebuilt)*<br>`ssh://git@github.com/raphsaeed/carbon.git` (`carbon-protocol` on `main`) | `:7420` (`/carbon`, `/health`, `/` WebGL2) | Full-Stage Warm-Paper Course Gallery (`displayMode: "full-stage"`), Slide-Over Index, Split `Question \| Working` panes, 5 Curated Font Voices + `PennstanderMath`, 22 2D macros, 3D math stage, stylus ink/rubber, deterministic `captureBoard` PNGs, and `Snap Board` Comment Drawer. | **Read-only sibling.** Pure rendering stage & input emitter: **never** opens `.raphs` vaults directly, **never** calls LLMs, and **never** owns student persistence or curriculum rules. |
 | **`SIGMA`** | **Runtime Tutoring Conductor** (Voice + Adaptive Navigator) | *Separate Runtime Repo* (links `memory_core_rs`, `theta_calc`, `carbon-protocol`) | *Client / `wss://` Gateway* | Student ASR (listen) + TTS (speak + `speechBeats`), merging `Course L7` + `Student L1–L6` for Carbon's Gallery, stepping `Level 9 ↔ Level 1` or `flow.detourPush` Topic Cards, live answer grading via `Theta`, and saving student stats/reminders. | Never invents multi-step algebra or raw board coordinates from scratch (relies on Hydrogen's pre-compiled `9 → 1` steps); never mutates curriculum tables in `<product>-<subject>.raphs`. |
 
 ---
@@ -51,37 +52,36 @@ The curriculum and tutoring platform is composed of **five specialized Rust-firs
 
 ```mermaid
 flowchart TB
-    subgraph Plane1["1. AUTHORING & COMPILATION PLANE (Driven by HYDROGEN)"]
+    subgraph Plane1["1. AUTHORING & COMPILATION PLANE (Driven by ANTIGRAVITY + HYDROGEN CLI)"]
         direction TB
         RawPapers["Raw Inputs (products/*/inbox/ PDFs, Books & Images)"]
         ProductAssets["Git-Tracked Brand Logos (assets/) + 4-Tier rules/"]
-        PrivateXref[("Local Private Store: archive/ Crops + private-xref.json (NEVER in .raphs)")]
+        PrivateStore[("Local Private Store (Git-Ignored): archive/ Crops + private-xref.json + ledger.json + status.html")]
+        Antigravity["ANTIGRAVITY — Interactive & Background SSH Authoring Conductor (+ Parallel Subagents)"]
 
-        subgraph HydrogenBox["HYDROGEN — Authoring Conductor (Rust CLI + axum :7430)"]
+        subgraph HydrogenBox["HYDROGEN — Pure-Rust Curriculum Engine (`hydrogen` CLI)"]
             direction LR
-            H_Ingest["1. Ingest & Slicer"]
+            H_Ingest["1. PDF/PNG Slicer & Product Ledger"]
             H_Rules["2. 4-Tier RuleLoader"]
-            H_Compiler["3. Agentic L9-to-L1 Compiler (CLI or Gemini 4)"]
-            H_Gate["4. Quality Gate (Theta + Carbon + Clean-Room)"]
-            H_WebUI["5. Light, Soft Web Console (HTML/TS + GYR-LOGO-BLUE)"]
+            H_Gate["3. Quality Gate (Theta + Carbon + Warm-Paper + Clean-Room)"]
+            H_Capture["4. Headless Carbon Visual & Bounds Verifier"]
+            H_Watch["5. Two-Way Carbon --watch Preview & Comment Sync"]
         end
 
-        ThetaCompile["THETA (theta_calc In-Process) — Compile-Time Math & A-E MCQ Gate"]
+        ThetaCompile["THETA (theta_calc In-Process) — Compile-Time Math & A-E MCQ Gate (< 50 us)"]
+        CarbonHeadless["CARBON Headless (:7420 on DGX Spark) — getState Bounds + captureBoard PNG + LAN WebGL2"]
 
-        RawPapers -->|"Read & slice"| H_Ingest
-        ProductAssets -->|"Rules + Brand Logos"| H_Rules
-        H_Ingest -.->|"Save private crop map"| PrivateXref
-        PrivateXref -.->|"Side-by-side QA crop"| H_WebUI
-        H_Ingest --> H_Compiler
-        H_Rules --> H_Compiler
-        H_Compiler -->|"Tool calls (<50us)"| ThetaCompile
-        H_Compiler --> H_Gate
-        H_Gate -->|"Verify every step & option"| ThetaCompile
+        RawPapers -->|"Scan SHA-256 & slice"| H_Ingest
+        ProductAssets -->|"Rules + PNG Logos"| H_Rules
+        H_Ingest <-->|"Track crops, queue & status.html"| PrivateStore
+        Antigravity <-->|"Drive CLI, inspect crops/PNGs & author L9..L1 JSON"| HydrogenBox
+        H_Gate -->|"Verify every step & A-E option"| ThetaCompile
+        H_Capture <-->|"ws://127.0.0.1:7420/carbon"| CarbonHeadless
     end
 
     subgraph VaultPlane["2. ENCRYPTED VAULT LAYER (memory.raphs Schema 2.3.0 / memory_core_rs 1.7.0)"]
         direction LR
-        CourseVault[("COURSE VAULT: gyara-maths.raphs (L7: Curriculum, L9-L1 Steps, Logo Blobs, Comments — ZERO Student Stats)")]
+        CourseVault[("COURSE VAULT: gyara-maths.raphs (L7: Curriculum, L9-L1 Steps, PNG Blobs, Comments — ZERO Student Stats)")]
         StudentVault[("STUDENT VAULT: student.raphs (L1-L6: Attempts, Mastery, Important Flags & 15d Due Reminders)")]
     end
 
@@ -89,14 +89,14 @@ flowchart TB
         direction TB
         Sigma["SIGMA — Runtime Conductor (ASR + TTS + Merges Course L7 & Student L1-L6 + Navigates L9-L1)"]
         ThetaRuntime["THETA (theta_calc Native or theta.wasm) — Live Answer Check & 120Hz @param Eval"]
-        CarbonStage["CARBON (:7420 Native or carbon-web WASM) — Full-Stage Dark Gallery + Split Board + 2D/3D Macros + Snap Board"]
+        CarbonStage["CARBON (:7420 Native Metal, LAN WebGL2, or carbon-web WASM) — Full-Stage Gallery + Split Board + Snap Board"]
     end
 
-    H_Gate ==>|"Upsert verified L7 items & Logo Blobs + Clean Export"| CourseVault
-    H_WebUI <==>|"Read Catalog, Inspect Steps & Process Comments"| CourseVault
-    H_WebUI <==>|"Live Author Preview (authorMode: true) over WS :7420"| CarbonStage
+    H_Gate ==>|"Upsert verified L7 items & PNG Blobs + Clean Export"| CourseVault
+    H_Watch <==>|"Read Catalog/Steps & Persist Snap Board Comments"| CourseVault
+    H_Watch <==>|"Live Author Preview (authorMode: true) over WS :7420"| CarbonStage
 
-    CourseVault ==>|"Read-Only L7 Curriculum + GYR-LOGO-WHITE Blob"| Sigma
+    CourseVault ==>|"Read-Only L7 Curriculum + GYR-LOGO-BLUE Blob"| Sigma
     Sigma -.->|"Optional owner comment.saved (authorMode: true)"| CourseVault
     Sigma <==>|"Read/Write Progress, Important & 15d Reminders"| StudentVault
     Sigma ==>|"Commands: chrome.setCatalog, scene.*, speechBeats, detourPush"| CarbonStage
@@ -112,57 +112,55 @@ Every connection in the ecosystem has an explicit **Driver (Caller)**, **Target 
 
 | # | Driver (Initiator) | Target | Transport / Binding | When Active | Exact Payloads & Responsibility |
 | :-: | :--- | :--- | :--- | :--- | :--- |
-| **1** | **Hydrogen** | **`Theta` (`theta_calc`)** | In-process Rust crate (`calc-api`) | Authoring / Compile | Calls `calc.eval`, `calc.solve`, `calc.formula`, `calc.stats`, `calc.analyze_graph` (`< 50 µs`) to compute exact rationals, mixed fractions, `\htmlId` KaTeX tokens, graph landmarks, and verify all 5 `A–E` MCQ distractors. |
-| **2** | **Hydrogen** | **`Course .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L7`) | Authoring / Export | Writes `course_meta` (including `GYR-LOGO-WHITE` & `GYR-LOGO-BLUE` brand blobs), papers, sections, books/chapters, topics, stimuli, questions (`question_json` + `solution_json`), processes/resolves `course_comments`, and runs `export_clean_course_bundle()`. |
-| **3** | **Hydrogen** *(Web UI or CLI)* | **`Carbon`** (`carbon-shell` / `carbon-web`) | WebSocket (`ws://127.0.0.1:7420/carbon` on Mac or `ws://<mac-ip>:7420/carbon` over LAN) | Authoring Live Preview | Hydrogen sends `chrome.update` (`authorMode: true`), `chrome.setCatalog` (`displayMode: "full-stage"`), Left-Pane question batch, and Right-Pane `(Step, Level)` batch. Carbon emits back `catalog.itemSelected`, `comment.saved` (with base64 `Snap Board` PNGs $\to$ saved into `course_comments`), and `catalog.actionRequested` (`"create-replica"`). |
-| **4** | **SIGMA** | **`Course .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L7`) | Student Runtime | Opens `<product>-<subject>.raphs` using the single **Lesson Key** (`open_with_passphrase`). Calls `course_catalog_snapshot()` (`< 1 ms`), reads `GYR-LOGO-WHITE` blob, loads `CourseQuestion` (`L9..L1` steps + `narration`) and linked `CourseTopicCard`s. *(Writes nothing except optional `course_comments` if teacher/owner `authorMode: true` is enabled.)* |
+| **1** | **Hydrogen CLI** | **`Theta` (`theta_calc`)** | In-process Rust crate (`calc-api`) | Authoring / Compile | Calls `calc.eval`, `calc.solve`, `calc.formula`, `calc.transform`, `calc.stats`, `calc.analyze_graph` (`< 50 µs`) to compute exact rationals, mixed fractions, `\htmlId` KaTeX tokens, graph landmarks, and verify all 5 `A–E` MCQ distractors. |
+| **2** | **Hydrogen CLI** | **`Course .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L7`) | Authoring / Export | Writes `course_meta` (including `GYR-LOGO-BLUE` & `GYR-LOGO-WHITE` PNG blobs), papers, sections, books/chapters, topics, cards, stimuli, questions (`question_json` + `solution_json`), persists/resolves `course_comments`, and runs `export_clean_course_bundle()`. |
+| **3** | **Hydrogen CLI** *(`capture-carbon` & `preview-carbon --watch`)* | **`Carbon`** (`carbon-shell`) | WebSocket (`ws://127.0.0.1:7420/carbon` headless on DGX Spark or `ws://192.168.68.64:7420/carbon` on MacBook) | Visual QA & Live Author Preview | Sends `config.setTheme("warm-paper")`, `chrome.update(authorMode: true)`, `chrome.setCatalog(displayMode: "full-stage")`, Left/Right-Pane batches, `getState(includeTokens: true)`, and `captureBoard`. In `--watch` mode, listens for `catalog.itemSelected`, `step.navigated`, `comment.saved` (persisting `Snap Board` PNGs into `course_comments`), `comment.deleted`, and `catalog.actionRequested("create-replica")` (recording tasks in `ledger.json`). |
+| **4** | **SIGMA** | **`Course .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L7`) | Student Runtime | Opens `<product>-<subject>.raphs` using the single **Lesson Key** (`open_with_passphrase`). Calls `course_catalog_snapshot()` (`< 1 ms`), reads `GYR-LOGO-BLUE` blob, loads `CourseQuestion` (`L9..L1` steps + `narration`) and linked `CourseTopicCard`s. |
 | **5** | **SIGMA** | **`Student .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L1–L6`) | Student Runtime | Reads and updates per-student question state (`default` / `in-progress` / `completed`), attempt/correct counts, `important: true` (`△`), spaced-repetition `reminder` (`"15d"`), and `dueReminder: true` (`repeat due`). |
-| **6** | **SIGMA** | **`Carbon`** (`carbon-shell` or `carbon-web`) | WebSocket (`ws://127.0.0.1:7420/carbon` locally or `wss://` in Browser Mode) | Student Runtime | **SIGMA drives every visual transition on Carbon:** merges `Course L7` + `Student L1–L6` into `chrome.setCatalog` (`displayMode: "full-stage"`, `brandLogo`, `importantIcon: "triangle"`, 4-state card colors including `#6B1414` Deep Crimson `dueReminder`); upon `catalog.itemSelected`, switches Carbon to Split Whiteboard and streams Hydrogen's pre-compiled `batch` commands + `speechBeats` across `Level 9 ↔ Level 1`. |
+| **6** | **SIGMA** | **`Carbon`** (`carbon-shell` or `carbon-web`) | WebSocket (`ws://127.0.0.1:7420/carbon` locally or `wss://` in Browser Mode) | Student Runtime | Merges `Course L7` + `Student L1–L6` into `chrome.setCatalog` (`displayMode: "full-stage"`, `brandLogo`, `importantIcon: "triangle"`, 4-state Warm-Paper cards including `#FFF1F2` rose-blush `dueReminder`); streams Hydrogen's pre-compiled `batch` commands + `speechBeats` across `Level 9 ↔ Level 1`. |
 | **7** | **SIGMA** *(or Browser WASM Host)* | **`Theta`** (`theta_calc` or `theta.wasm`) | In-process Rust crate (Native/Server) or WASM call (Browser) | Student Runtime | Evaluates student free-form math answers for equivalence against `answerKey.exactValue` and computes 120Hz `@param` reactive expressions (`Carbon param.changed` $\to$ `Theta` $\to$ `Carbon reactive.setParams`). |
 
 ---
 
 ### 3.3 End-to-End Runtime Sequence: Student Session & Teaching Feedback Loop
 
-This sequence shows how **SIGMA**, **`Course .raphs`**, **`Student .raphs`**, **Carbon**, **Theta**, and **Hydrogen** cooperate during a real lesson:
-
 ```mermaid
 sequenceDiagram
     actor Stu as Student / Teacher
-    participant Crb as Carbon (Native :7420 or Browser WASM)
+    participant Crb as Carbon (Native :7420, LAN WebGL2, or WASM)
     participant Sig as SIGMA (Runtime Conductor)
     participant CVlt as gyara-maths.raphs (L7 Course Vault)
     participant SVlt as student.raphs (L1-L6 Learner Vault)
     participant Tht as Theta (theta_calc / theta.wasm)
-    participant Hyd as Hydrogen (Later Offline Pass)
+    participant Hyd as Hydrogen CLI + Antigravity (Authoring Pass)
 
-    Note over Sig,SVlt: 1. Session Launch — Full-Stage Dark-Slate Course Gallery
-    Sig->>CVlt: course_catalog_snapshot() + get GYR-LOGO-WHITE blob
+    Note over Sig,SVlt: 1. Session Launch — Full-Stage Warm-Paper Course Gallery
+    Sig->>CVlt: course_catalog_snapshot() + get GYR-LOGO-BLUE PNG blob
     Sig->>SVlt: Read student progress, Important (triangle) & 15d Due Reminders
-    Sig->>Crb: chrome.setCatalog(displayMode: "full-stage", brandLogo, subjects, papers with #6B1414 due cards)
+    Sig->>Crb: config.setTheme("warm-paper") + chrome.setCatalog(displayMode: "full-stage", brandLogo, subjects, papers)
     Crb-->>Stu: Renders Full-Stage Gyara+ Gallery
 
     Note over Stu,Sig: 2. Paper & Question Selection
-    Stu->>Crb: Clicks "Practice Paper 08-ai" -> "Q4"
-    Crb->>Sig: Event: catalog.itemSelected(itemId: "GYR-MTH-P008_R01-Q004")
-    Sig->>CVlt: get_course_question("GYR-MTH-P008_R01-Q004")
+    Stu->>Crb: Clicks "Practice Paper 01" -> "Q15"
+    Crb->>Sig: Event: catalog.itemSelected(itemId: "GYR-MTH-P001-Q015")
+    Sig->>CVlt: get_question("GYR-MTH-P001-Q015")
     Sig->>Crb: batch: config.setLayout("split") + Left-Pane Stem/Diagram + chrome.update
 
     Note over Stu,Tht: 3. Student Attempt & Adaptive Level 9 -> Level 1 Step-Down
     Stu->>Crb: Submits MCQ / written attempt or asks "I don't get how to start"
-    Crb->>Sig: Event: answer.submitted / voice transcript
+    Crb->>Sig: Event: prompt.answered / voice transcript
     Sig->>Tht: calc.eval / equivalence check against answerKey.exactValue
-    Tht-->>Sig: Diagnostic match (e.g. Trap B: added ratios instead of clearing fraction)
-    Sig->>Crb: Dispatch Step 1 @ Level 9 (or step down to Level 6/4 barModel) + speechBeats
+    Tht-->>Sig: Diagnostic match (e.g. Trap A: solved 2(N - 3) = 0 instead of 2(N - 3) = N)
+    Sig->>Crb: Dispatch Step 1 @ Level 9 (or step down to Level 5/3 balanceScale) + speechBeats
     Sig-->>Stu: Speaks pre-compiled narration synced with Carbon strokes
     Sig->>SVlt: Record attempt, mastery & schedule 15d reminder
 
-    Note over Stu,Hyd: 4. Optional Teacher/Author Feedback ("Snap Board" -> Hydrogen)
-    opt Teacher/Owner Session (authorMode: true)
+    Note over Stu,Hyd: 4. Live Author / Teacher Feedback ("Snap Board" -> .raphs -> Antigravity)
+    opt Owner Session (SIGMA or `hydrogen preview-carbon --watch` with authorMode: true)
         Stu->>Crb: Draws marker note + clicks "Snap Board" in Comment Drawer
-        Crb->>Sig: Event: comment.saved (category: "fix" | "replica", PNG attachment)
+        Crb->>Sig: Event: comment.saved (kind: "fix" | "replica", PNG attachment)
         Sig->>CVlt: upsert_course_comment() + ref-counted PNG blob
-        Hyd->>CVlt: Later: reads open course_comments + private-xref.json -> auto-repairs & resolves
+        Hyd->>CVlt: `hydrogen comments` + `private-xref.json` -> Antigravity patches, verifies & resolves
     end
 ```
 
@@ -170,63 +168,69 @@ sequenceDiagram
 
 ### 3.4 Three Operating Deployment Topologies (Same Core Crates, Zero Forked Branches)
 
-1. **Cross-Machine Authoring Topology (Founder Workflow — Mac + DGX Spark):**
-   - **DGX Spark (`Linux`):** Runs `hydrogen serve` (`:7430`), linking `memory_core_rs 1.7.0`, `theta_calc`, and `carbon-protocol`, reading/writing `gyara-maths.raphs`.
-   - **Mac:** Runs native `carbon-shell --split` (`:7420`) and opens Hydrogen's Light, Soft Web Console (`http://<dgx-ip>:7430`) in Safari/Chrome. The browser (or Hydrogen backend via `--lan`) bridges directly to `ws://127.0.0.1:7420/carbon` for live `Level 9 → 1` preview and `Snap Board` comment capture.
+1. **Authoring, Headless QA & Live Preview Topology (Founder Workflow — DGX Spark + MacBook / iPad):**
+   - **DGX Spark (`Linux`):** Antigravity drives the `hydrogen` Rust CLI over SSH, reading/writing `gyara-maths.sqlite`/`.raphs`, `private-xref.json`, `ledger.json`, and `status.html`, and verifying board geometry & rendered PNGs against the prebuilt local `carbon-shell --headless --lan --split --port 7420` (`ws://127.0.0.1:7420/carbon`).
+   - **MacBook / iPad Live Viewing & Commenting:** Either open DGX Spark's zero-install 120Hz WebGL2 mirror (`http://192.168.68.52:7420/` Ethernet / `http://192.168.68.85:7420/` Wi-Fi) or run native macOS `carbon-shell --lan --split` (`ws://192.168.68.64:7420/carbon`) driven by `hydrogen preview-carbon --watch` — navigating all `Levels 9 → 1` and saving `Snap Board` comments straight back into `gyara-maths.sqlite` and `ledger.json`.
 2. **Native Offline Student / Classroom Topology:**
    - A single local app bundle runs **SIGMA** + `memory_core_rs` (local `gyara-maths.raphs` + `<student>.raphs`) + `theta_calc` + `carbon-shell` (`ws://127.0.0.1:7420/carbon`)—100% offline with zero cloud latency or recurring server cost.
-3. **Zero-Install Web Browser Topology (Phase 8 — Individual B2C Users on Any Device):**
+3. **Zero-Install Web Browser Topology (Phase 7 — Individual B2C Users on Any Device):**
    - **In the Student's Browser (iPad, Chromebook, Windows, Mac):** Static **`carbon-web` (`engine.wasm`) + `theta.wasm`** built from `main` render the 120Hz Full-Stage Gallery, whiteboard macros, 3D stage, and sliders locally on the client GPU.
-   - **On the Cloud Server (`axum` + `SIGMA`):** Keeps `<product>-<subject>.raphs` strictly server-side (preventing `.raphs` file piracy), authenticates the user, syncs `<student>.raphs` progress/reminders across devices, and streams only the active question/step Carbon JSON over `wss://`.
+   - **On the Cloud Server (`SIGMA` Gateway):** Keeps `<product>-<subject>.raphs` strictly server-side (preventing `.raphs` file piracy), authenticates the user, syncs `<student>.raphs` progress/reminders across devices, and streams only the active question/step Carbon JSON over `wss://`.
 
 ---
 
 ## 4. Hydrogen Workspace & Internal Rust Module Layout
 
-Within this repository (`/home/raphspark/projects/hydrogen`), Hydrogen is organized as a single unified Rust crate (`CLI` + `axum` server) alongside Git-tracked `rules/` and `products/` brand assets:
+Within `/home/raphspark/projects/hydrogen`, Hydrogen is a lean, zero-bloat pure-Rust crate (`lib` + `hydrogen` CLI binary) alongside Git-tracked `rules/` and `products/*/assets/` brand logos:
 
 ```text
 hydrogen/
-├── Cargo.toml                              # Rust package manifest (links memory_core_rs, theta_calc, carbon-protocol)
+├── Cargo.toml                              # Rust Edition 2024 manifest (forbid unsafe; deny unwrap/expect/panic)
+├── hydrogen.toml                           # Workspace defaults (products_dir, rules_dir, carbon_ws_url, device_id)
+├── .env                                    # GIT-IGNORED: Local secrets & endpoints (HYDROGEN_LESSON_KEY, CARBON_WS_URL)
 ├── docs/                                   # Ecosystem & Hydrogen specifications
-│   ├── gyara-workflow.png
-│   ├── requirements.md
+│   ├── sop.md                              # Standard Operating Procedure, ways of working, CLI playbook & tricks
 │   ├── system-architecture.md              # <--- This master ecosystem & Hydrogen architecture doc
-│   ├── solution-levels.md
-│   ├── build-plan.md
-│   ├── theta-integration.md
-│   ├── carbon-integration.md
-│   └── memory-raphs.md
-├── rules/                                  # Strictly product-isolated 4-tier pedagogical & visual rules
-│   ├── common.md                           # Tier 1: Global clarity, simplicity, elegance & Carbon/KaTeX hygiene
-│   ├── gyaraplus/                          # Tier 2..4: 11+ (common.md + {maths,english,vr,nvr}/{common,levels}.md)
-│   ├── gcse/                               # Tier 2..4: GCSE (common.md + {maths,physics}/{common,levels,tier}.md)
+│   ├── requirements.md                     # Product & functional requirements
+│   ├── solution-levels.md                  # Question-relative `Level 9 -> Level 1` rules & JSON schemas
+│   ├── build-plan.md                       # Phased implementation checklist (Phases 1 -> 8)
+│   ├── carbon-visual-theme.md              # Warm-Paper palette, 12-subject mineral colors & 5 Curated Font Voices
+│   ├── theta-integration.md                # `theta_calc` tools, presets & 313-formula catalog
+│   ├── carbon-integration.md               # `Carbon Protocol v0.1` wire, 2D/3D macros & event contract
+│   ├── memory-raphs.md                     # `memory.raphs` Schema 2.3.0 / `memory_core_rs 1.7.0` spec
+│   └── gyara-workflow.png                  # Ecosystem workflow diagram
+├── rules/                                  # GIT-TRACKED: Strictly product-isolated 4-tier pedagogical & visual rules
+│   ├── common.md                           # Tier 1: Global clarity, Warm-Paper palette, 5 font voices & KaTeX hygiene
+│   ├── gyaraplus/                          # Tier 2..4: 11+ (common.md + {maths,english,verbal-reasoning,non-verbal-reasoning}/{common,levels}.md)
+│   ├── gcse/                               # Tier 2..4: GCSE (common.md + {maths,physics}/{common,levels,foundation,higher}.md)
 │   ├── alevel/                             # Tier 2..4: A-Level (common.md + {maths,physics}/{common,levels}.md)
 │   ├── primary/                            # Tier 2..4: Primary KS2
 │   └── infant/                             # Tier 2..4: Infant EYFS/KS1
-├── products/                               # Multi-product root (TRACKED in Git for assets/logos/docs)
+├── products/                               # Multi-product root (TRACKED in Git for assets/logos/docs only)
 │   ├── gyaraplus/
-│   │   ├── assets/                         # GIT-TRACKED brand logos: gyara-{white,blue}.{png,svg}
-│   │   ├── inbox/maths/                    # GIT-IGNORED: Drop raw PDFs / images here
-│   │   ├── archive/maths/                  # GIT-IGNORED: Processed raw sources + page/question crops
-│   │   ├── private-xref.json               # GIT-IGNORED: Private ID <-> source PDF/page/bbox map
-│   │   └── gyara-maths.raphs               # GIT-IGNORED: Live L7 course vault (.sqlite/.keys.json or .raphs)
+│   │   ├── assets/                         # GIT-TRACKED brand logos: gyara-{blue,white}.{png,svg}
+│   │   ├── inbox/{maths,english,...}/      # GIT-IGNORED: Drop raw PDFs / books / worksheets here
+│   │   ├── archive/{maths,english,...}/    # GIT-IGNORED: Archived sources, 180 DPI pages/, crops/, & <QID>.json
+│   │   ├── private-xref.json               # GIT-IGNORED: Private UniversalId <-> source PDF/page/bbox map
+│   │   ├── ledger.json                     # GIT-IGNORED: Product-wide inbox SHA-256 inventory, paper/topic progress & task queue
+│   │   ├── status.html                     # GIT-IGNORED: Self-contained Warm-Paper visual QA & progress report
+│   │   └── gyara-maths.{sqlite,raphs}      # GIT-IGNORED: Live L7 SQLCipher container (+ .keys.json) & packed .raphs bundle
 │   └── gcse/
-│       ├── assets/
-│       ├── maths/
-│       └── physics/
+│       └── {assets,inbox,archive}/
 ├── src/
-│   ├── main.rs                             # Unified `hydrogen` binary (CLI subcommands + `serve`)
-│   ├── config.rs                           # Env/TOML config (products root, Lesson Keys, Carbon URL, Gemini API)
-│   ├── rules/                              # 4-tier RuleLoader (YAML frontmatter + isolated product/subject/level markdown)
-│   ├── domain/                             # Strongly-typed QuestionBlueprint, SolutionBlueprint (L9..L1), UniversalId
-│   ├── vault/                              # `memory_core_rs 1.7.0` L7 wrapper, logo seeder, catalog projector & clean exporter
-│   ├── theta/                              # In-process `theta_calc` wrapper, 11+/GCSE presets & math/MCQ verifier
-│   ├── carbon/                             # Carbon WS client (`ws://...:7420/carbon`), Catalog builder, validator & comment listener
-│   ├── ingest/                             # PDF page renderer/cropper, `private-xref.json` store & inbox->archive mover
-│   ├── compiler/                           # Gemini 4 agentic tool loop, replica generator, topic builder & comment fixer
-│   └── server/                             # `axum` REST + WS routes serving `web/` static UI & live job events
-└── web/                                    # Minimal zero-bloat Light, Soft HTML + TypeScript + CSS 4-view Console
+│   ├── lib.rs                              # Crate exports & `VERSION`
+│   ├── main.rs                             # Unified `hydrogen` CLI binary (zero external arg-parser crates)
+│   ├── config.rs                           # Pure-Rust OS env -> .env -> hydrogen.toml config loader
+│   ├── error.rs                            # Strongly-typed `HydrogenError`
+│   ├── base64_util.rs                      # RFC 4648 Base64 codec, `data:` URI builder & PNG `IHDR` dimension reader
+│   ├── rules/                              # 4-tier isolated `RuleLoader` + YAML frontmatter parser
+│   ├── domain/                             # `UniversalId`, `QuestionBlueprint`, `SolutionBlueprint` (L9..L1), `QuestionPackage`
+│   ├── vault/                              # `VaultManager` (`Mutex<Memory>`), PNG logo seeder, comment/asset helpers & clean exporter
+│   ├── theta/                              # In-process `ThetaService` (`theta_calc`), mixed-fraction normalizer & `A-E` MCQ gate
+│   ├── carbon/                             # `CarbonClient` WS driver (`captureBoard`, `getState` bounds, Full-Stage Catalog, `--watch` sync)
+│   ├── ingest/                             # Pure-Rust `hayro` PDF slicer, `private-xref.json`, `ledger.rs` & static `status.html` `report.rs`
+│   └── compiler/                           # Deterministic `gate.rs` (Theta + Carbon + Warm-Paper + 5 Font Voices + KaTeX + Clean-Room)
+└── tests/                                  # End-to-end pipeline integration tests
 ```
 
 ---
@@ -235,77 +239,65 @@ hydrogen/
 
 ### 5.1 L7 Vault Subsystem (`src/vault/` ↔ `memory_core_rs 1.7.0`)
 - **Live Working Container vs. Packed `.raphs` Bundle:**
-  - `memory_core_rs` operates on `<dir>/gyara-maths.sqlite` + `gyara-maths.keys.json` during fast incremental SQLite transactions and packs/unpacks single-file `gyara-maths.raphs` zip bundles via `Memory::pack` / `bundle::unpack` / `Memory::export_clean_course_bundle`. Hydrogen's `VaultHandle` wraps this behind a `tokio::sync::Mutex<Memory>` (honoring `memory.raphs` Conformance Rule A6: single `Memory` connection per file per process).
+  - `memory_core_rs` operates on `<dir>/gyara-maths.sqlite` + `gyara-maths.keys.json` during fast incremental SQLCipher transactions and packs/unpacks single-file `gyara-maths.raphs` zip bundles via `Memory::pack` / `bundle::unpack` / `Memory::export_clean_course_bundle`. `VaultManager` wraps the handle behind a `tokio::sync::Mutex<Memory>` (honoring Conformance Rule A6: single `Memory` connection per file per process).
 - **Embedded Product & Subject PNG Logo Blobs + 12-Subject Mineral Palette (`course_media_assets` + `course_meta.config_json`):**
-  - When initializing or updating a product vault, Hydrogen embeds **strictly `2×` PNG** logos from `products/<product>/assets/` into `blobs` via `memory.put_course_asset(...)` (`GYR-LOGO-BLUE` from `gyara-blue.png` as the Title-Bar `brandLogo`, plus optional per-subject PNG emblems such as `<PROD>-<SUBJ>-LOGO`) and stores `{ "branding": { "primaryLogoAssetId": "GYR-LOGO-BLUE", "subjectLogoMode": "inherit" | "asset:<ID>" | "none", "theme": "warm-paper", "subjectColor": "#5B7DB1", "importantIcon": "triangle" } }` in `course_meta.config_json`.
-  - Both **SIGMA** and **Hydrogen** enforce Carbon's Light, Soft `warm-paper` theme (`config.setTheme: "warm-paper"`), pass `brandLogo` (`data:image/png;base64,...`) for the centered Title Bar, and set each `availableSubjects[i].logo` independently (`Some("data:image/png;base64,...")` for a custom subject icon, `None` to inherit `brandLogo`, or `Some("")` for a clean text-only subject card).
+  - Embeds **strictly `2×` PNG** logos from `products/<product>/assets/` into `blobs` via `memory.put_course_asset(...)` (`GYR-LOGO-BLUE` from `gyara-blue.png` as the Title-Bar `brandLogo`, plus `GYR-LOGO-WHITE`) and stores `{ "branding": { "primaryLogoAssetId": "GYR-LOGO-BLUE", "theme": "warm-paper", "subjectColor": "#5B7DB1", "importantIcon": "triangle" } }` in `course_meta.config_json`.
 - **Zero-Overhead Full-Stage & Slide-Over Projection (`CourseCatalogSnapshot` $\to$ Carbon `chrome.setCatalog`):**
-  - Calls `memory.course_catalog_snapshot()` (`< 1 ms` indexed scalar read) and maps to Carbon's `chrome.setCatalog` (`displayMode: "full-stage"` or `"slide-over"`, `viewLevel: "subjects" | "subject-root" | "paper-detail" | "topic-detail"`):
-    - `course_meta.config_json.branding` + `blobs` $\to$ `brandLogo` (`GYR-LOGO-BLUE`), `importantIcon: "triangle"`, and explicit `subjects[]` Hero Cards drawn from the **12-Subject Muted Mineral Palette** (`#5B7DB1`, `#4D8B7A`, `#7A6BA8`, `#A8647A`, `#A37E58`, `#568A9E`, `#6B8E67`, `#8F6B9E`, `#B07462`, `#5C768D`, `#8C7D53`, `#4F8A8B`—always explicitly assigned so `> 6` subjects never repeat Carbon's 6-colour fallback),
-    - `papers` + `paper_sections` + `questions` (`container_kind == "paper"`, tagging `is_replica == true` with violet `AI` `tagBadges` and `filterTags`) $\to$ `chrome.setCatalog.params.papers[]`,
-    - `books` $\to$ `chapters` $\to$ `topics` $\to$ `topic_cards` + `questions` $\to$ `chrome.setCatalog.params.topics[]` (`parentId` hierarchy),
-    - Author QA metrics (`total questions`, `verified`, `open comments`, `replicas`, `topic breakdown`) $\to$ `chrome.setCatalog.params.stats` when previewing in Hydrogen Author Mode *(while learner `important` `△`, `reminder: "15d"`, and Deep Crimson `#6B1414` `dueReminder: true` states are merged strictly at runtime by SIGMA from `<student>.raphs`)*.
+  - Calls `memory.course_catalog_snapshot()` (`< 1 ms` indexed scalar read) and projects `brandLogo`, 12-subject muted mineral colors (`#5B7DB1`, `#4D8B7A`, `#7A6BA8`, `#A8647A`, ...), `papers[]` (with `#6D5CAE` `AI` badges on `is_replica == true`), `topics[]`, and Author QA `stats` straight into Carbon's `chrome.setCatalog`.
 
 ### 5.2 Deterministic Math & Distractor Engine (`src/theta/` ↔ `theta_calc`)
 - Calls `theta_calc` directly in Rust (`< 50 µs` per call):
-  - **11+ Preset:** `preset: "uk_gcse"`, `angle_mode: "deg"`, `allow_mixed_fractions: true`, `anchor_tokens: true`.
-  - **Step & Check Gate:** Evaluates every `thetaVerification` entry inside `solution_json`, asserts exact symbolic/rational equality across `Part (a) -> Part (b)` (`exportedExact`), and verifies `Check ✔` lines.
+  - **Stage Presets:** Configured dynamically from `<subject>/common.md` YAML frontmatter (for 11+ Maths: `preset: "uk_gcse"`, `angle_mode: "deg"`, `allow_mixed_fractions: true`, `anchor_tokens: true`).
+  - **Step & Multi-Part Gate:** Evaluates every `thetaVerification` entry inside `solution_json`, asserts exact symbolic/rational equality across `Part (a) -> Part (b)` (`exportedExact`) with zero intermediate rounding drift, and verifies reverse `Check` lines.
   - **MCQ Distractor Gate:** For every `mcq` question (`A–E`), verifies all 5 options parse cleanly, are pairwise distinct, and **exactly one** matches `answerKey.exactValue`.
 
-### 5.3 Carbon Live Bridge & Schema Validator (`src/carbon/` ↔ `Carbon Protocol v0.1`)
-1. **Static & Headless Validation:**
-   - Compile-time type safety via the pure-Rust `carbon-protocol` crate (`serde` + `serde_json`, zero GPU/OS dependencies).
-   - Verifies all math inside `scene.write` is wrapped in `$...$` / `\(...\)` (catching raw ASCII math leaks), all `targetId` / `\htmlId` references resolve in execution order, and canonical Carbon §5.1–§5.2 enums (`warm-paper`, `squared`, `chrome.update`, etc.) are used.
-   - Optionally dispatches each `(step, sublevel)` batch to `carbon-shell --headless` and verifies `{ "type": "ack", "ok": true }` (and optional `captureBoard` PNG for VLM layout self-check).
-2. **Interactive Live Preview & Comment Sync (`ws://127.0.0.1:7420/carbon` or LAN `ws://<mac-ip>:7420/carbon`):**
-   - Connects to a live Carbon window (either browser-direct from Mac localhost `:7420` or over LAN from DGX Spark), sends `chrome.update` (`authorMode: true`, `activeItemId`, `activeStepId`, `authorMeta: { sublevel }`) + `chrome.setCatalog` + Left-Pane question commands + selected `(Step, Level)` Right-Pane commands.
-   - Listens continuously to Carbon's outbound WebSocket events:
-     - `catalog.itemSelected` $\to$ loads the clicked Question or Topic Card from `gyara-maths.raphs` onto Carbon.
-     - `comment.saved` $\to$ decodes base64 `Snap Board` / uploaded attachments into `CommentAttachmentBytes` and calls `memory.upsert_course_comment(...)` immediately.
-     - `comment.deleted` $\to$ calls `memory.delete_course_comment(...)`.
-     - `catalog.actionRequested` (`"create-replica"`) $\to$ queues a replica job in Hydrogen.
+### 5.3 Carbon Quality Gate, Headless Visual Verifier & Two-Way `--watch` Bridge (`src/carbon/` & `src/compiler/gate.rs`)
+1. **Static Protocol, Warm-Paper & 5-Voice Gate (`gate.rs`):**
+   - Compile-time type safety via pure-Rust `carbon-protocol` (`0.1`).
+   - Enforces `$...$` / `\(...\)` `PennstanderMath` wrapping (rejecting raw ASCII math leaks), the 5 Curated Font Voices (`handwritten`, `typeset`, `casual`, `marker`, `typewriter`; rejecting `classic-serif`), `c1..c8` editorial ink/card/stamp hexes, strokes `<= 2.2 pt`, zero duplicate `✓` inside `"kind": "check"`, PNG-only logos, execution-order `targetId` / `\htmlId` resolution, contiguous `9 → min_sublevel` non-repetitive levels, and Clean-Room anonymization.
+2. **Headless Layout Bounds & PNG Visual Verification (`capture-carbon`):**
+   - Connects to DGX Spark's prebuilt headless `carbon-shell --headless --lan --split --port 7420`, dispatches `(part, step, sublevel)` batches, checks `getState(includeTokens: true)` object/token bounding boxes for unexpected overlaps or out-of-pane clipping, and renders deterministic CPU-rasterized `captureBoard` PNGs for visual inspection.
+3. **Interactive Two-Way `--watch` Preview & Comment Persistence (`preview-carbon --watch`):**
+   - Connects to Carbon (`ws://127.0.0.1:7420/carbon` or MacBook `ws://192.168.68.64:7420/carbon`), pushes the Full-Stage Gallery (`authorMode: true`), streams `L9 → L1` steps and `substeps[]` breakdowns interactively, and persists outbound Carbon authoring events in real time:
+     - `comment.saved` $\to$ decodes base64 `Snap Board` / uploaded PNG attachments and calls `memory.upsert_course_comment(...)` immediately,
+     - `comment.deleted` $\to$ calls `memory.delete_course_comment(...)`,
+     - `catalog.actionRequested` (`"create-replica"`) $\to$ appends a queued replica task into `products/<product>/ledger.json`.
 
 ### 5.4 4-Tier Isolated Rule Loader (`src/rules/` ↔ `rules/`)
 - Resolves strictly within the target product directory so GCSE, A-Level, 11+, Primary, and Infant rules never bleed across products:
-  `rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/common.md` $\to$ `rules/<product>/<subject>/levels.md` *(+ optional tier/class file such as `foundation.md` / `higher.md`)*.
-- Parses the YAML frontmatter on `<subject>/common.md` to configure `theta_calc` (`preset`, `angle_mode`, `allow_mixed_fractions`), default `answer_format` (`mcq` vs `written`), and `level_9_policy` (`allowed` / `forbidden` methods), while assembling the exact concatenated rulebook for the AI compiler—dynamically reloadable from disk without recompiling Rust.
+  `rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/common.md` $\to$ `rules/<product>/<subject>/levels.md` *(+ optional tier overlay `foundation.md` / `higher.md`)*.
 
-### 5.5 Agentic Compilation Pipeline (`src/compiler/`)
-Supports **both** interactive Antigravity CLI authoring and autonomous Rust Gemini 4 batch authoring over the exact same JSON contracts and quality gates:
+### 5.5 Product Authoring Ledger & Static `status.html` Dashboard (`src/ingest/ledger.rs` & `report.rs`)
+Because `<product>-<subject>.raphs` is strictly per-subject and Clean-Room anonymized, Hydrogen maintains a lightweight, Git-ignored per-product ledger at `products/<product>/ledger.json` paired with a zero-server visual dashboard at `products/<product>/status.html`:
+- **Zero-Drift Hybrid Responsibility:**
+  - **Subject `.sqlite` Vaults (`gyara-maths.sqlite`, `gyara-english.sqlite`, ...):** Remain the **single source of truth** for compiled papers, questions, `L9 → L1` solutions, topics, concept cards, media blobs, revisions, and `course_comments`.
+  - **`products/<product>/ledger.json`:** Tracks what `.raphs` intentionally excludes:
+    1. **Inbox & Source File Inventory (`sha256` deduplicated):** Every raw PDF/book/image discovered in `inbox/<subject>/` or `archive/<subject>/`, preventing duplicate ingestion even if renamed, along with its assigned `paper_id` and lifecycle state (`queued` $\to$ `sliced` $\to$ `in_progress` $\to$ `completed`).
+    2. **Paper Expectations & Item Checklist:** Expected total question count per paper (e.g., `GYR-MTH-P001`: `50` questions), missing/pending question slots (`Q002..Q014`), and author QA notes.
+    3. **Authoring Task Queue:** Pending replica requests (from Carbon's `⋮` menu or CLI), planned topic/prerequisite cards, and cross-subject notes.
+- **`hydrogen status [--product <slug>] [--html]`:**
+  - Merges live `inbox/` filesystem scans + `private-xref.json` + `ledger.json` + `CourseCatalogSnapshot`s across all subject `.sqlite` vaults in `< 50 ms`.
+  - Prints a concise terminal briefing (giving any Antigravity session instant situational awareness) and generates a self-contained Warm-Paper `products/<product>/status.html` report featuring subject summary cards, paper progress bars, topic coverage tables, side-by-side `archive/` crop vs. compiled question previews, and open `Snap Board` screenshots.
+
+### 5.6 End-to-End Antigravity + Hydrogen CLI Authoring Sequence
 
 ```mermaid
 sequenceDiagram
     participant Src as inbox/ Paper PDF
-    participant Hyd as Hydrogen Rust Engine
-    participant Gem as Gemini 4 (API or Antigravity)
+    participant Agy as Antigravity (SSH + Subagents)
+    participant Hyd as Hydrogen CLI (`hydrogen`)
     participant Tht as theta_calc (In-Process)
-    participant Crb as Carbon Validator / Headless
-    participant Vlt as gyara-maths.raphs (L7)
+    participant Crb as Carbon Headless (:7420)
+    participant Vlt as gyara-maths.sqlite / .raphs
 
-    Src->>Hyd: 1. Render pages & slice items -> private-xref.json + archive/
-    Hyd->>Gem: 2. Send clean crop + 4-tier stage rules (Extract stem, structure & visual spec)
-    Gem->>Tht: 3. Tool calls: calc.eval / calc.solve / calc.analyze_graph (exact math + distractors)
-    Tht-->>Gem: Exact rationals, traces, landmarks & \htmlId KaTeX
-    Gem->>Hyd: 4. Propose QuestionBlueprint + SolutionBlueprint (Steps x Levels 9..1)
-    Hyd->>Tht: 5. Deterministic Math & MCQ Uniqueness Gate
-    Hyd->>Crb: 6. Carbon Command / KaTeX / Headless Layout Check
-    alt Validation Error or Visual Overlap
-        Crb-->>Gem: Diagnostic error / board PNG -> Auto-repair iteration
-    else All Gates Green
-        Hyd->>Vlt: 7. put_course_asset (if media) + upsert_question (atomic L7 tx)
-    end
+    Agy->>Hyd: 1. `hydrogen status` (inspect inbox queue, ledger.json & open comments)
+    Src->>Hyd: 2. `hydrogen slice-paper` (render 180 DPI pages & crops -> archive/ + private-xref.json + ledger.json)
+    Agy->>Hyd: 3. Read crop PNG + 4-tier rules; call `hydrogen theta` for exact steps & A-E distractors
+    Hyd->>Tht: Exact rationals, equation traces, landmarks & \htmlId KaTeX (< 50 us)
+    Agy->>Hyd: 4. Write QuestionPackage JSON -> `hydrogen verify-question` (gate.rs)
+    Agy->>Hyd: 5. `hydrogen capture-carbon --check-bounds` (push batch to headless :7420)
+    Hyd->>Crb: getState(includeTokens: true) + captureBoard PNG
+    Crb-->>Agy: Token overlap report + rendered board PNG (auto-refine if needed)
+    Agy->>Hyd: 6. `hydrogen upsert-question --pack` + `hydrogen status --html`
+    Hyd->>Vlt: Atomic L7 SQLCipher upsert + updated products/<product>/status.html
 ```
-
-### 5.6 Minimal 4-View Hydrogen Web Console — Warm-Paper Editorial Theme (`src/server/` + `web/`)
-Served by `axum` on `http://127.0.0.1:7430`:
-- **Unified Warm-Paper Light Editorial Palette + Vault PNG Logo ([`carbon-visual-theme.md`](./carbon-visual-theme.md)):**
-  - Mirrors Carbon's Warm-Paper surface & chrome tokens (`#FDFBF7` warm ivory canvas, `#F2ECE1` warm stone header with `#DBD2C2` border & `#FCF9F2` stadium pills, `#1F2421` deep charcoal ink, `#68645B` muted label ink):
-  - **Header & Navigation:** Clean warm-stone top bar featuring pill breadcrumbs (`[🏠] > [11+ Maths] > [Practice Papers] > [Paper 01]`) on the left and the centered PNG **`Gyara+` logo (`GYR-LOGO-BLUE` / `gyara-blue.png`, strictly PNG-only)** served directly from the `.raphs` vault `blobs`.
-  - **4-State Card Grid:** Preserves the exact 3-level card-grid hierarchy (`Subjects` $\to$ `Papers / Topics` $\to$ `Questions`) and soft-mineral colors (`#5B7DB1` Maths, `#4D8B7A` English, `#7A6BA8` VR, `#A8647A` NVR) with Carbon's 4-state fills: `#FFFFFF` (`#DEE4EC` border, default), `#F1F6FD` (`#BAD4F7` border, compiling/in-progress), `#F0FBF4` (`#B2E8C6` border, verified), `#FFF1F2` (`#FBABB8` border & `#881337` rose title, open `fix` comments or gate errors), and `#6D5CAE` understated `AI` replica badges.
-- **REST API (`/api/...`):**
-  - `GET /api/vaults` & `POST /api/vaults/open` — switch between `gyara-maths.raphs`, `gyara-nvr.raphs`, etc.
-  - `GET /api/catalog` — returns `CourseCatalogSnapshot` (Books, Chapters, Papers, Topics, Types, Question Summaries, Comment Counts).
-  - `GET /api/questions/:id` & `GET /api/questions/:id/source-crop` — returns full `CourseQuestion` (`question_json`, `solution_json`, `revisions`) and streams the private crop from `private-xref.json` (`archive/`).
-  - `POST /api/carbon/preview` — pushes a Question + specific `(part, step, sublevel)` live to Carbon (`ws://127.0.0.1:7420/carbon`).
-  - `POST /api/jobs/ingest`, `POST /api/jobs/replica`, `POST /api/jobs/process-comments`, `POST /api/vaults/export-clean` — triggers async jobs.
-- **WebSocket (`/api/ws`):** Streams real-time job progress (`question 12/50: Theta verified ✔`) and live `comment.saved` notifications straight to the browser UI.

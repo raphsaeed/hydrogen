@@ -45,6 +45,7 @@ Rather than running heavy web servers or brittle hardcoded prompt chains, Hydrog
 | Host / Service | Machine | Address / Path | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Hydrogen Workspace** | DGX Spark (`Linux aarch64`) | `/home/raphspark/projects/hydrogen` | Primary development, Antigravity SSH sessions, CLI compilation, `ledger.json`, `status.html`, and `.raphs` vaults |
+| **Hydrogen Status Server (`Phase 3A`)** | DGX Spark (`Linux aarch64`) | `http://127.0.0.1:7430/` *(local)*<br>`http://192.168.68.52:7430/` *(Ethernet)*<br>`http://192.168.68.85:7430/` *(Wi-Fi)* | `hydrogen serve --lan --port 7430` (`axum` Carbon Warm-Paper Multi-Product $\to$ Sub-Product $\to$ `status.html` Explorer + `inbox/`/`archive/` file viewer) |
 | **Prebuilt Headless Carbon** | DGX Spark (`Linux aarch64`) | `/home/raphspark/projects/carbon/target/release/carbon-shell` | Local headless `Carbon Protocol v0.1` server (`ws://127.0.0.1:7420/carbon`), `getState` token bounds, deterministic CPU `captureBoard` PNGs, & LAN WebGL2 viewer |
 | **DGX Carbon LAN Viewer** | MacBook / iPad Browser | `http://192.168.68.52:7420/` *(Ethernet)*<br>`http://192.168.68.85:7420/` *(Wi-Fi)* | Zero-install 120Hz `engine.wasm` + WebGL2 mirror of DGX Spark's headless Carbon stage |
 | **Native MacBook Carbon** | Apple Silicon Mac | `ws://192.168.68.64:7420/carbon` | Native macOS Metal `carbon-shell --lan --split` window on the founder's MacBook |
@@ -88,14 +89,16 @@ pkill -f "carbon-shell --headless"
 
 ## 3. Standard Ways of Working (Day-to-Day Authoring Playbook)
 
-### Workflow A — Starting / Resuming Any Session (`hydrogen status`)
-Whenever starting a new Antigravity session (or checking active sub-product progress):
-1. Run `hydrogen status --product gyaraplus --html` (or scope to a single sub-product with `--subject maths`).
-2. Inspect the terminal summary (and optional `products/<product>/<subject>/status.html`):
-   - Only **active/worked sub-products** (e.g. `products/gyaraplus/maths/` or `products/gcse/{maths,physics}/`) appear—untouched subjects never clutter `ledger.json` or `status.html`,
+### Workflow A — Starting / Resuming Any Session (`hydrogen status` & `hydrogen serve`)
+Whenever starting a new Antigravity session (or checking active product / sub-product progress):
+1. Run `hydrogen status --product gyaraplus --html` (or launch `hydrogen serve --lan --port 7430` in `Phase 3A` to browse all active products & sub-products live from MacBook/iPad at `http://192.168.68.52:7430/`).
+2. Inspect the terminal summary or Carbon Warm-Paper dashboard (`products/<product>/<subject>/status.html`):
+   - **Zero-clutter discovery:** Products with `0` active sub-products and untouched subjects never appear—only worked folders (e.g. `products/gyaraplus/maths/` or `products/gcse/{maths,physics}/`) are shown,
+   - Cached `vaultSummary` in `ledger.json` enables `< 2 ms` multi-product card scanning without decrypting SQLCipher vaults on every page view,
+   - Section tabs (`Overview & Papers`, `Questions & Crops`, `Topics`, `Replicas`, `Comments & Tasks`, `Sources`), instant question filter chips (`All`, `Verified`, `Sliced / Pending`, `Replicas`, `Open Comments`), search box, and click-to-zoom crop/`Snap Board` lightbox,
    - Which raw PDFs/images are sitting unprocessed in `products/<product>/<subject>/inbox/` (checked by SHA-256 so renamed duplicates are flagged automatically),
    - Which papers are partially compiled (e.g. `GYR-MTH-P001`: `2/50` verified, next uncompiled items `Q002..Q014`),
-   - Topic & concept card coverage across all strands,
+   - Replica lineage (`single_question` vs. `whole_paper` replicas + original parent & source references),
    - Open `Snap Board` comments (`fix`, `replica`, `topic`, `engine`) and queued tasks in `ledger.json`.
 
 ### Workflow B — Ingesting & Compiling a Paper via Antigravity
@@ -138,8 +141,10 @@ Whenever starting a new Antigravity session (or checking active sub-product prog
 ├── .env.example                            # GIT-TRACKED: Template for `.env`
 ├── .gitignore                              # Ignores target/, .env*, *.sqlite*, *.keys.json, *.raphs, inbox/, archive/, ledger.json, status.html
 ├── Cargo.toml                              # Rust Edition 2024 manifest (forbid unsafe; deny unwrap/expect/panic)
-├── hydrogen.toml                           # Workspace defaults (products_dir, rules_dir, carbon_ws_url, device_id)
+├── hydrogen.toml                           # Workspace defaults (products_dir, rules_dir, bind_addr :7430, carbon_ws_url :7420)
 ├── README.md                               # Top-level index
+├── assets/
+│   └── hydrogen-logo.png                   # GIT-TRACKED: Hydrogen application logo (landing page & status header)
 ├── docs/                                   # Master specifications & operational playbooks
 │   ├── sop.md                              # <--- THIS DOCUMENT (Ways of working, CLI playbook, Carbon headless, tricks)
 │   ├── system-architecture.md              # 5-component topology, product ledger & strict conductor boundaries
@@ -193,8 +198,9 @@ Whenever starting a new Antigravity session (or checking active sub-product prog
 │   │   └── preview.rs                      # Split-board `(part, step, sublevel, substep, answer)` batch builder & live event reducer
 │   ├── ingest/
 │   │   ├── slicer.rs                       # Pure-Rust `hayro` PDF rasterizer + `png` cropper (`PagesOnly`, `AutoWhitespaceBands`, `ExplicitCrops`)
-│   │   ├── ledger.rs                       # Unified sub-product `ledger.json` (SHA-256 sources, page/bbox crops, progress, replica lineage & tasks)
-│   │   └── report.rs                       # Self-contained Warm-Paper `status.html` static report generator
+│   │   ├── ledger.rs                       # Unified sub-product `ledger.json` (`vaultSummary`, SHA-256 sources, page/bbox crops, progress, replica lineage & tasks)
+│   │   └── report.rs                       # Dual-mode Carbon Warm-Paper `status.html` renderer (`StandaloneFile` & `Server` modes, tabs, filters, lightbox)
+│   ├── server/                             # (Phase 3A) `axum` `:7430` Multi-Product & Sub-Product Status Explorer (`hydrogen serve`)
 │   └── compiler/
 │       └── gate.rs                         # Deterministic Quality Gate (Theta + Carbon + Warm-Paper + 5 Font Voices + KaTeX + Clean-Room)
 └── tests/

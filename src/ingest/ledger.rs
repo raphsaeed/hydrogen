@@ -408,6 +408,23 @@ pub struct AuthoringTask {
     pub updated_at_ms: u64,
 }
 
+/// Cached scalar summary of `<stem>.sqlite` (`CourseCatalogSnapshot`) stored in `ledger.json`
+/// so `hydrogen serve` (`Phase 3A`) can scan products & sub-products and render card grids in `< 2 ms`
+/// without decrypting SQLCipher vaults on every page load.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultSummary {
+    pub course_id: String,
+    pub title: String,
+    pub vault_initialized: bool,
+    pub paper_count: usize,
+    pub verified_question_count: usize,
+    pub replica_count: usize,
+    pub topic_count: usize,
+    pub topic_card_count: usize,
+    pub open_comment_count: usize,
+}
+
 /// Unified sub-product `ledger.json` store persisted atomically at `products/<product>/<subject>/ledger.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -417,6 +434,9 @@ pub struct ProductLedger {
     #[serde(default)]
     pub subject: String,
     pub updated_at_ms: u64,
+    /// Cached `.sqlite` vault summary for `< 2 ms` explorer card rendering in `hydrogen serve`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vault_summary: Option<VaultSummary>,
     /// Raw source files keyed by lowercase 64-char SHA-256 hex digest.
     #[serde(default)]
     pub sources: BTreeMap<String, SourceFileEntry>,
@@ -439,6 +459,7 @@ impl ProductLedger {
             product: product.into(),
             subject: subject.into(),
             updated_at_ms: now_ms(),
+            vault_summary: None,
             sources: BTreeMap::new(),
             papers: BTreeMap::new(),
             items: BTreeMap::new(),
@@ -844,6 +865,40 @@ impl ProductLedger {
 
         // 3. Merge live `CourseCatalogSnapshot` from `<stem>.sqlite` vault if provided
         if let Some(snap) = vault_snapshot {
+            let prod_prefix = UniversalId::product_prefix_for_slug(&self.product);
+            let subj_prefix = UniversalId::subject_prefix_for_slug(&subject);
+            let fallback_course_id = format!("{prod_prefix}-{subj_prefix}");
+            let course_id = snap
+                .meta
+                .as_ref()
+                .map(|m| m.course_id.clone())
+                .unwrap_or(fallback_course_id);
+            let title = snap
+                .meta
+                .as_ref()
+                .map(|m| m.title.clone())
+                .unwrap_or_else(|| subject.replace('-', " "));
+            let verified_q_count = snap
+                .questions
+                .iter()
+                .filter(|q| {
+                    !q.is_replica && (q.qa_status == "verified" || q.qa_status == "approved")
+                })
+                .count();
+            let replica_q_count = snap.questions.iter().filter(|q| q.is_replica).count();
+
+            self.vault_summary = Some(VaultSummary {
+                course_id,
+                title,
+                vault_initialized: true,
+                paper_count: snap.papers.len(),
+                verified_question_count: verified_q_count,
+                replica_count: replica_q_count,
+                topic_count: snap.topics.len(),
+                topic_card_count: snap.topic_cards.len(),
+                open_comment_count: usize::try_from(snap.total_open_comments.max(0)).unwrap_or(0),
+            });
+
             let mut verified_by_paper: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
             let mut verified_total_by_paper: BTreeMap<String, u32> = BTreeMap::new();
             let mut replicas_by_paper: BTreeMap<String, u32> = BTreeMap::new();

@@ -23,7 +23,10 @@ use hydrogen::carbon::{
 use hydrogen::config::HydrogenConfig;
 use hydrogen::domain::PaperPackage;
 use hydrogen::error::{HydrogenError, Result};
-use hydrogen::ingest::{AuthoringTaskKind, ProductLedger, ReplicaScope, RgbaBuffer, SourceStage};
+use hydrogen::ingest::{
+    AuthoringTaskKind, ProductLedger, ReplicaScope, RgbaBuffer, SourceStage,
+    discover_active_products,
+};
 use hydrogen::vault::VaultManager;
 use serde_json::json;
 use tokio::time::{sleep, timeout};
@@ -219,8 +222,15 @@ fn setup_temp_workspace(tag: &str) -> Result<(PathBuf, HydrogenConfig)> {
     if tmp.exists() {
         std::fs::remove_dir_all(&tmp)?;
     }
+    std::fs::create_dir_all(tmp.join("assets"))?;
     std::fs::create_dir_all(tmp.join("products/gyaraplus/maths/inbox"))?;
     std::fs::create_dir_all(tmp.join("products/gyaraplus/assets"))?;
+    std::fs::create_dir_all(tmp.join("products/gcse/assets"))?;
+
+    std::fs::copy(
+        repo_root.join("assets/hydrogen-logo.png"),
+        tmp.join("assets/hydrogen-logo.png"),
+    )?;
 
     for logo in ["gyara-blue.png", "gyara-white.png"] {
         std::fs::copy(
@@ -507,6 +517,20 @@ fn phase3_ledger_sha256_dedup_status_html_and_put_asset_cli() -> Result<()> {
         Some("archive/GYR-MTH-P001/crops/GYR-MTH-P001-Q001.png")
     );
 
+    assert_eq!(
+        discover_active_products(&cfg)?,
+        vec!["gyaraplus".to_string()],
+        "products with 0 active sub-products (gcse) must be hidden"
+    );
+    let vs = ledger_final
+        .vault_summary
+        .as_ref()
+        .ok_or_else(|| HydrogenError::Validation("expected vaultSummary in ledger.json".into()))?;
+    assert_eq!(vs.course_id, "GYR-MTH");
+    assert_eq!(vs.verified_question_count, 1);
+    assert_eq!(vs.replica_count, 1);
+    assert_eq!(vs.topic_count, 8);
+
     assert!(
         tmp.join("products/gyaraplus/maths/gyara-maths.sqlite")
             .is_file()
@@ -515,6 +539,10 @@ fn phase3_ledger_sha256_dedup_status_html_and_put_asset_cli() -> Result<()> {
     assert!(html_path.is_file());
     let html_content = std::fs::read_to_string(&html_path)?;
     assert!(html_content.contains("#FDFBF7"));
+    assert!(html_content.contains("hydrogen-mark"));
+    assert!(html_content.contains("section-tabs"));
+    assert!(html_content.contains("data-qfilter=\"verified\""));
+    assert!(html_content.contains("img-lightbox"));
     assert!(html_content.contains("gyaraplus/maths"));
     assert!(html_content.contains("gyara-maths.raphs"));
     assert!(!html_content.contains("Verbal Reasoning"));

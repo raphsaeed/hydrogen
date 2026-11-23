@@ -106,12 +106,59 @@ pub struct ProductStatusReport {
     pub ledger_path: PathBuf,
     pub status_html_path: PathBuf,
     #[serde(skip_serializing)]
+    pub hydrogen_logo_data_uri: Option<String>,
+    #[serde(skip_serializing)]
     pub brand_logo_data_uri: Option<String>,
     pub subjects: Vec<SubjectStatusCard>,
     pub ledger: ProductLedger,
     pub topics: Vec<TopicCoverageRow>,
     pub side_by_side_items: Vec<SideBySideQuestionRow>,
     pub open_comments: Vec<OpenCommentEntry>,
+}
+
+/// Controls how `render_status_html_with_mode` resolves breadcrumbs, file links, and image URLs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum StatusRenderMode {
+    /// Self-contained static file (`products/<product>/<subject>/status.html`):
+    /// uses inline `data:image/png;base64,...` thumbnails and relative `inbox/` / `archive/` links.
+    #[default]
+    StandaloneFile,
+    /// Live HTTP server (`hydrogen serve` on `:7430`):
+    /// renders clickable `Products ▸ <product> ▸ <subject>` breadcrumbs, optional live Sync button,
+    /// and serves crops, 180 DPI pages, PDFs, and `<QID>.json` via `file_url_prefix`.
+    Server {
+        home_url: String,
+        product_url: String,
+        file_url_prefix: String,
+        hydrogen_logo_url: Option<String>,
+        sync_url: Option<String>,
+    },
+}
+
+/// Discover ONLY products under `products/` that have at least 1 active sub-product
+/// (products with `0` active sub-products, such as an unstarted `products/gcse/`, are hidden).
+pub fn discover_active_products(cfg: &HydrogenConfig) -> Result<Vec<String>> {
+    if !cfg.products_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut products = Vec::new();
+    for res in std::fs::read_dir(&cfg.products_dir)? {
+        let entry = res?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let Some(slug) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if slug.is_empty() || slug.starts_with('.') {
+            continue;
+        }
+        if !discover_product_subjects(cfg, &slug)?.is_empty() {
+            products.push(slug);
+        }
+    }
+    products.sort();
+    Ok(products)
 }
 
 /// Discover ONLY active sub-product subject slugs under `products/<product>/<subject>/`
@@ -215,7 +262,18 @@ pub async fn build_subject_status_report(
     let mut vault_snapshot: Option<CourseCatalogSnapshot> = None;
     let mut compiled_questions: BTreeMap<String, CourseQuestion> = BTreeMap::new();
     let mut open_comments: Vec<OpenCommentEntry> = Vec::new();
+    let mut hydrogen_logo_data_uri: Option<String> = None;
     let mut brand_logo_data_uri: Option<String> = None;
+
+    if include_html_media {
+        let h_logo = cfg.hydrogen_logo_path();
+        if h_logo.is_file()
+            && let Ok(bytes) = std::fs::read(&h_logo)
+            && read_png_dimensions(&bytes).is_some()
+        {
+            hydrogen_logo_data_uri = Some(to_data_uri("image/png", &bytes));
+        }
+    }
 
     if sqlite_path.is_file() || bundle_path.is_file() {
         let vault = VaultManager::open_or_create(
@@ -424,6 +482,7 @@ pub async fn build_subject_status_report(
         elapsed_ms,
         ledger_path,
         status_html_path: cfg.status_html_path(product, subject),
+        hydrogen_logo_data_uri,
         brand_logo_data_uri,
         subjects: vec![subject_card],
         ledger,
@@ -640,8 +699,29 @@ pub fn format_terminal_status(report: &ProductStatusReport) -> String {
     out
 }
 
+fn resolve_rel_href(mode: &StatusRenderMode, rel_path: &str) -> String {
+    match mode {
+        StatusRenderMode::StandaloneFile => rel_path.to_string(),
+        StatusRenderMode::Server {
+            file_url_prefix, ..
+        } => format!(
+            "{}/{}",
+            file_url_prefix.trim_end_matches('/'),
+            rel_path.trim_start_matches('/')
+        ),
+    }
+}
+
 /// Render a self-contained Warm-Paper HTML dashboard (`products/<product>/<subject>/status.html`).
 pub fn render_status_html(report: &ProductStatusReport) -> String {
+    render_status_html_with_mode(report, &StatusRenderMode::StandaloneFile)
+}
+
+/// Render the Carbon Warm-Paper HTML status dashboard in either `StandaloneFile` or live `Server` mode.
+pub fn render_status_html_with_mode(
+    report: &ProductStatusReport,
+    mode: &StatusRenderMode,
+) -> String {
     let total_verified: usize = report
         .subjects
         .iter()
@@ -663,8 +743,23 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     let total_cards: usize = report.subjects.iter().map(|s| s.topic_card_count).sum();
     let open_comments_len = report.open_comments.len();
     let pending_tasks_len = report.ledger.pending_task_count();
+    let questions_len = report.side_by_side_items.len();
+    let topics_len = report.topics.len();
+    let sources_len = report.ledger.sources.len();
+    let replicas_total = report
+        .ledger
+        .papers
+        .values()
+        .filter(|p| p.is_replica)
+        .count()
+        + report
+            .ledger
+            .items
+            .values()
+            .filter(|i| i.is_replica)
+            .count();
 
-    let mut html = String::with_capacity(32_768);
+    let mut html = String::with_capacity(45_056);
     html.push_str(
         r##"<!DOCTYPE html>
 <html lang="en">
@@ -677,7 +772,8 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
         "{}/{} ({})",
         report.product, report.subject, report.vault_stem
     )));
-    html.push_str(r##"</title>
+    html.push_str(
+        r##"</title>
   <style>
     :root {
       --paper-bg: #FDFBF7;
@@ -711,10 +807,12 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
       font-family: "Lato", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       line-height: 1.5;
     }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
     header.topbar {
       background: var(--chrome-bg);
       border-bottom: 1px solid var(--chrome-border);
-      padding: 16px 28px;
+      padding: 14px 28px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -724,34 +822,72 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     .brand-row {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .hydrogen-mark {
+      height: 38px;
+      width: 38px;
+      border-radius: 9px;
+      background: #1F2421;
+      padding: 4px;
+      object-fit: contain;
+      display: block;
+      box-shadow: 0 1px 2px rgba(31, 36, 33, 0.12);
     }
     .brand-row img.brand-logo {
-      height: 40px;
+      height: 36px;
       width: auto;
       display: block;
     }
+    .breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--ink-muted);
+      margin-bottom: 2px;
+    }
+    .crumb-pill {
+      background: var(--pill-bg);
+      border: 1px solid var(--chrome-border);
+      border-radius: 6px;
+      padding: 1px 8px;
+      font-weight: 600;
+      color: var(--ink-primary);
+    }
+    a.crumb-pill:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+      text-decoration: none;
+    }
+    .crumb-active {
+      font-weight: 700;
+      color: var(--ink-primary);
+    }
+    .crumb-sep { color: var(--ink-muted); font-size: 0.75rem; }
     .brand-title h1 {
       margin: 0;
-      font-size: 1.25rem;
+      font-size: 1.2rem;
       letter-spacing: -0.01em;
     }
     .brand-title p {
       margin: 2px 0 0;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--ink-muted);
     }
     .kpi-strip {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      align-items: center;
+      gap: 8px;
     }
     .kpi-pill {
       background: var(--pill-bg);
       border: 1px solid var(--chrome-border);
       border-radius: 999px;
-      padding: 6px 14px;
-      font-size: 0.84rem;
+      padding: 5px 13px;
+      font-size: 0.82rem;
       font-weight: 600;
     }
     .kpi-pill.alert {
@@ -764,16 +900,85 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
       border-color: var(--emerald-border);
       color: var(--emerald);
     }
+    .sync-btn {
+      background: var(--blue);
+      color: #FFFFFF;
+      border: 1px solid #1D4ED8;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .sync-btn:hover { background: #1D4ED8; }
     main {
       max-width: 1380px;
       margin: 0 auto;
-      padding: 24px 28px 56px;
+      padding: 20px 28px 56px;
+    }
+    nav.section-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 22px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--chrome-border);
+    }
+    button.tab-chip, button.filter-chip {
+      background: var(--pill-bg);
+      color: var(--ink-primary);
+      border: 1px solid var(--chrome-border);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.83rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    button.tab-chip:hover, button.filter-chip:hover {
+      border-color: var(--blue-border);
+      background: var(--blue-bg);
+    }
+    button.tab-chip.active, button.filter-chip.active {
+      background: var(--blue);
+      color: #FFFFFF;
+      border-color: var(--blue);
+    }
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    input.q-search {
+      background: #FFFFFF;
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.84rem;
+      min-width: 260px;
+      color: var(--ink-primary);
+    }
+    input.q-search:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px var(--blue-bg);
     }
     section {
-      margin-bottom: 32px;
+      margin-bottom: 30px;
+    }
+    section.hidden-sec, tr.hidden-row {
+      display: none !important;
     }
     h2 {
-      font-size: 1.08rem;
+      font-size: 1.06rem;
       margin: 0 0 12px;
       color: var(--ink-primary);
       border-bottom: 1px solid var(--chrome-border);
@@ -876,6 +1081,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
       border-radius: 6px;
       background: #FFFFFF;
       display: block;
+      cursor: zoom-in;
     }
     .stem-box {
       white-space: pre-wrap;
@@ -904,26 +1110,113 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
       margin-top: 8px;
       background: #FFFFFF;
       display: block;
+      cursor: zoom-in;
     }
     .muted { color: var(--ink-muted); font-size: 0.82rem; }
+    #img-lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(31, 36, 33, 0.82);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+    #img-lightbox.open { display: flex; }
+    .lightbox-card {
+      background: var(--paper-bg);
+      border: 1px solid var(--chrome-border);
+      border-radius: 12px;
+      padding: 14px;
+      max-width: 94vw;
+      max-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    }
+    .lightbox-card img {
+      max-width: 90vw;
+      max-height: 80vh;
+      object-fit: contain;
+      background: #FFFFFF;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+    }
+    .lightbox-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.84rem;
+      color: var(--ink-muted);
+    }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand-row">"##);
+    <div class="brand-row">"##,
+    );
+
+    let h_logo_src = match mode {
+        StatusRenderMode::Server {
+            hydrogen_logo_url: Some(url),
+            ..
+        } => Some(url.as_str()),
+        _ => report.hydrogen_logo_data_uri.as_deref(),
+    };
+    if let Some(h_uri) = h_logo_src {
+        let _ = write!(
+            html,
+            r##"<img class="hydrogen-mark" src="{}" alt="Hydrogen">"##,
+            escape_html(h_uri)
+        );
+    }
 
     if let Some(ref logo_uri) = report.brand_logo_data_uri {
         let _ = write!(
             html,
-            r##"<img class="brand-logo" src="{}" alt="Brand Logo">"##,
+            r##"<img class="brand-logo" src="{}" alt="Product Logo">"##,
             escape_html(logo_uri)
         );
     }
+
+    let breadcrumbs_html = match mode {
+        StatusRenderMode::Server {
+            home_url,
+            product_url,
+            ..
+        } => format!(
+            r##"<nav class="breadcrumbs"><a class="crumb-pill" href="{}">Products</a><span class="crumb-sep">&#9656;</span><a class="crumb-pill" href="{}">{}</a><span class="crumb-sep">&#9656;</span><span class="crumb-active">{}</span></nav>"##,
+            escape_html(home_url),
+            escape_html(product_url),
+            escape_html(&report.product),
+            escape_html(&report.subject)
+        ),
+        StatusRenderMode::StandaloneFile => format!(
+            r##"<nav class="breadcrumbs"><span class="crumb-pill">Products</span><span class="crumb-sep">&#9656;</span><span class="crumb-pill">{}</span><span class="crumb-sep">&#9656;</span><span class="crumb-active">{}</span></nav>"##,
+            escape_html(&report.product),
+            escape_html(&report.subject)
+        ),
+    };
+
+    let sync_btn_html = match mode {
+        StatusRenderMode::Server {
+            sync_url: Some(s_url),
+            ..
+        } => format!(
+            r##"<form method="post" action="{}" style="margin:0;"><button type="submit" class="sync-btn">Sync Vault</button></form>"##,
+            escape_html(s_url)
+        ),
+        _ => String::new(),
+    };
 
     let _ = write!(
         html,
         r##"
       <div class="brand-title">
+        {breadcrumbs_html}
         <h1>Hydrogen Authoring &amp; QA Dashboard · <code>{}/{}</code> (<code>{}.raphs</code>)</h1>
         <p>Warm-Paper Unified Sub-Product Ledger (<code>ledger.json</code> + Encrypted <code>L7</code> Vault · {} ms)</p>
       </div>
@@ -934,9 +1227,19 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
       <span class="kpi-pill{}">Inbox Queued: {total_queued}{}</span>
       <span class="kpi-pill{}">Open Comments: {open_comments_len}</span>
       <span class="kpi-pill{}">Pending Tasks: {pending_tasks_len}</span>
+      {sync_btn_html}
     </div>
   </header>
   <main>
+    <nav class="section-tabs" aria-label="Dashboard Sections">
+      <button type="button" class="tab-chip active" data-section-target="all">All Sections</button>
+      <button type="button" class="tab-chip" data-section-target="overview">Overview &amp; Papers</button>
+      <button type="button" class="tab-chip" data-section-target="questions">Questions &amp; Crops ({questions_len})</button>
+      <button type="button" class="tab-chip" data-section-target="topics">Topics ({topics_len})</button>
+      <button type="button" class="tab-chip" data-section-target="replicas">Replicas ({replicas_total})</button>
+      <button type="button" class="tab-chip" data-section-target="comments">Comments &amp; Tasks ({})</button>
+      <button type="button" class="tab-chip" data-section-target="sources">Sources ({sources_len})</button>
+    </nav>
 "##,
         escape_html(&report.product),
         escape_html(&report.subject),
@@ -950,10 +1253,11 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
         },
         if open_comments_len > 0 { " alert" } else { "" },
         if pending_tasks_len > 0 { " alert" } else { "" },
+        open_comments_len + pending_tasks_len,
     );
 
     // 1. Subject Cards
-    html.push_str("    <section>\n      <h2>1. Subject Vault Overview</h2>\n      <div class=\"subject-grid\">\n");
+    html.push_str("    <section data-section=\"overview\">\n      <h2>1. Subject Vault Overview</h2>\n      <div class=\"subject-grid\">\n");
     for s in &report.subjects {
         let vault_badge = if s.vault_initialized {
             r##"<span class="badge ok">L7 Vault Ready</span>"##
@@ -994,7 +1298,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     html.push_str("      </div>\n    </section>\n");
 
     // 2. Paper Progress Bars & Missing Checklist
-    html.push_str("    <section>\n      <h2>2. Paper Progress &amp; Item Checklist</h2>\n");
+    html.push_str("    <section data-section=\"overview\">\n      <h2>2. Paper Progress &amp; Item Checklist</h2>\n");
     if report.ledger.papers.is_empty() {
         html.push_str("      <p class=\"muted\">No papers sliced or registered yet.</p>\n");
     } else {
@@ -1032,12 +1336,15 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
                 escape_html(&p.notes.join("; "))
             };
             let source_cell = match (&p.source_file, &p.archived_source_path) {
-                (Some(fname), Some(rel)) => format!(
-                    r##"<a href="{}"><code>{}</code></a><div class="muted"><code>{}</code></div>"##,
-                    escape_html(rel),
-                    escape_html(fname),
-                    escape_html(rel)
-                ),
+                (Some(fname), Some(rel)) => {
+                    let href = resolve_rel_href(mode, rel);
+                    format!(
+                        r##"<a href="{}"><code>{}</code></a><div class="muted"><code>{}</code></div>"##,
+                        escape_html(&href),
+                        escape_html(fname),
+                        escape_html(rel)
+                    )
+                }
                 (Some(fname), None) => format!(r##"<code>{}</code>"##, escape_html(fname)),
                 _ => r##"<span class="muted">-</span>"##.to_string(),
             };
@@ -1088,7 +1395,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     html.push_str("    </section>\n");
 
     // 3. Raw Inbox & Archive SHA-256 Inventory
-    html.push_str("    <section>\n      <h2>3. SHA-256 Source File Inventory (<code>inbox/</code> &amp; <code>archive/</code>)</h2>\n");
+    html.push_str("    <section data-section=\"sources\">\n      <h2>3. SHA-256 Source File Inventory (<code>inbox/</code> &amp; <code>archive/</code>)</h2>\n");
     if report.ledger.sources.is_empty() {
         html.push_str("      <p class=\"muted\">No raw PDF or image files discovered.</p>\n");
     } else {
@@ -1112,16 +1419,18 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
             let short_sha = &src.sha256[..src.sha256.len().min(12)];
             let mut path_links = Vec::new();
             for p in &src.inbox_paths {
+                let href = resolve_rel_href(mode, p);
                 path_links.push(format!(
                     r##"<a href="{}"><code>{}</code></a>"##,
-                    escape_html(p),
+                    escape_html(&href),
                     escape_html(p)
                 ));
             }
             for p in &src.archive_paths {
+                let href = resolve_rel_href(mode, p);
                 path_links.push(format!(
                     r##"<a href="{}"><code>{}</code></a>"##,
-                    escape_html(p),
+                    escape_html(&href),
                     escape_html(p)
                 ));
             }
@@ -1168,7 +1477,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     html.push_str("    </section>\n");
 
     // 4. Topic Coverage Matrix
-    html.push_str("    <section>\n      <h2>4. Curriculum Topic &amp; Concept Card Matrix</h2>\n");
+    html.push_str("    <section data-section=\"topics\">\n      <h2>4. Curriculum Topic &amp; Concept Card Matrix</h2>\n");
     if report.topics.is_empty() {
         html.push_str("      <p class=\"muted\">No curriculum topics seeded yet.</p>\n");
     } else {
@@ -1215,7 +1524,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     html.push_str("    </section>\n");
 
     // 5. Replicas Created & Origin Lineage
-    html.push_str("    <section>\n      <h2>5. Replicas Created &amp; Origin Lineage</h2>\n");
+    html.push_str("    <section data-section=\"replicas\">\n      <h2>5. Replicas Created &amp; Origin Lineage</h2>\n");
     let html_rep_papers: Vec<_> = report
         .ledger
         .papers
@@ -1247,11 +1556,14 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
         );
         for rp in html_rep_papers {
             let src_label = match (&rp.source_file, &rp.archived_source_path) {
-                (Some(sf), Some(rel)) => format!(
-                    r##"<a href="{}"><code>{}</code></a>"##,
-                    escape_html(rel),
-                    escape_html(sf)
-                ),
+                (Some(sf), Some(rel)) => {
+                    let href = resolve_rel_href(mode, rel);
+                    format!(
+                        r##"<a href="{}"><code>{}</code></a>"##,
+                        escape_html(&href),
+                        escape_html(sf)
+                    )
+                }
                 (Some(sf), None) => format!(r##"<code>{}</code>"##, escape_html(sf)),
                 _ => r##"<span class="muted">-</span>"##.to_string(),
             };
@@ -1298,12 +1610,15 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
             };
             let page_suffix = ri.page.map(|pg| format!(" · p.{pg}")).unwrap_or_default();
             let src_cell = match (&ri.source_file, &ri.archived_source_path) {
-                (Some(sf), Some(rel)) => format!(
-                    r##"<a href="{}"><code>{}</code></a>{}"##,
-                    escape_html(rel),
-                    escape_html(sf),
-                    escape_html(&page_suffix)
-                ),
+                (Some(sf), Some(rel)) => {
+                    let href = resolve_rel_href(mode, rel);
+                    format!(
+                        r##"<a href="{}"><code>{}</code></a>{}"##,
+                        escape_html(&href),
+                        escape_html(sf),
+                        escape_html(&page_suffix)
+                    )
+                }
                 (Some(sf), None) => format!(
                     r##"<code>{}</code>{}"##,
                     escape_html(sf),
@@ -1334,12 +1649,22 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     html.push_str("    </section>\n");
 
     // 6. Side-by-Side `archive/` Crop vs. Compiled Stem Table
-    html.push_str("    <section>\n      <h2>6. Side-by-Side <code>archive/</code> Crop vs. Compiled Question Stem</h2>\n");
+    html.push_str("    <section data-section=\"questions\">\n      <h2>6. Side-by-Side <code>archive/</code> Crop vs. Compiled Question Stem</h2>\n");
     if report.side_by_side_items.is_empty() {
         html.push_str("      <p class=\"muted\">No sliced crops or compiled questions yet.</p>\n");
     } else {
         html.push_str(
-            r##"      <table>
+            r##"      <div class="filter-bar">
+        <div class="filter-pills" role="group" aria-label="Question Filter">
+          <button type="button" class="filter-chip active" data-qfilter="all">All</button>
+          <button type="button" class="filter-chip" data-qfilter="verified">Verified</button>
+          <button type="button" class="filter-chip" data-qfilter="pending">Sliced / Pending</button>
+          <button type="button" class="filter-chip" data-qfilter="replica">Replicas</button>
+          <button type="button" class="filter-chip" data-qfilter="comments">Open Comments</button>
+        </div>
+        <input type="search" id="q-search-input" class="q-search" placeholder="Filter by ID, paper, or stem text...">
+      </div>
+      <table>
         <thead>
           <tr>
             <th>Universal ID</th>
@@ -1353,6 +1678,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
         for row in &report.side_by_side_items {
             let orig_source_line = match (&row.source_file, &row.archived_source_path) {
                 (Some(sf), Some(arch_rel)) => {
+                    let arch_href = resolve_rel_href(mode, arch_rel);
                     let sha_hint = row
                         .source_sha256
                         .as_deref()
@@ -1360,7 +1686,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
                         .unwrap_or_default();
                     format!(
                         r##"<div class="muted" style="margin-bottom:4px;">Original source: <a href="{}"><code>{}</code></a>{}</div>"##,
-                        escape_html(arch_rel),
+                        escape_html(&arch_href),
                         escape_html(sf),
                         escape_html(&sha_hint)
                     )
@@ -1374,25 +1700,47 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
 
             let crop_cell = match (&row.crop_data_uri, &row.crop_path) {
                 (Some(uri), Some(rel)) => {
+                    let href = resolve_rel_href(mode, rel);
                     let meta = match (row.crop_page, row.crop_dimensions) {
                         (Some(pg), Some((w, h))) => format!("p.{pg} · {w}×{h} px · "),
                         _ => String::new(),
                     };
                     format!(
-                        r##"{}<img class="crop-preview" src="{}" alt="Crop"><div class="muted" style="margin-top:4px;">{}<a href="{}"><code>{}</code></a></div>"##,
+                        r##"{}<img class="crop-preview" data-lightbox-caption="{}" src="{}" alt="Crop"><div class="muted" style="margin-top:4px;">{}<a href="{}"><code>{}</code></a></div>"##,
                         orig_source_line,
+                        escape_html(&format!("{} ({rel})", row.universal_id)),
                         escape_html(uri),
                         escape_html(&meta),
-                        escape_html(rel),
+                        escape_html(&href),
                         escape_html(rel)
                     )
                 }
-                (None, Some(rel)) => format!(
-                    r##"{}<a href="{}"><code>{}</code></a>"##,
-                    orig_source_line,
-                    escape_html(rel),
-                    escape_html(rel)
-                ),
+                (None, Some(rel)) => {
+                    let href = resolve_rel_href(mode, rel);
+                    match mode {
+                        StatusRenderMode::Server { .. } => {
+                            let meta = match (row.crop_page, row.crop_dimensions) {
+                                (Some(pg), Some((w, h))) => format!("p.{pg} · {w}×{h} px · "),
+                                _ => String::new(),
+                            };
+                            format!(
+                                r##"{}<img class="crop-preview" loading="lazy" data-lightbox-caption="{}" src="{}" alt="Crop"><div class="muted" style="margin-top:4px;">{}<a href="{}"><code>{}</code></a></div>"##,
+                                orig_source_line,
+                                escape_html(&format!("{} ({rel})", row.universal_id)),
+                                escape_html(&href),
+                                escape_html(&meta),
+                                escape_html(&href),
+                                escape_html(rel)
+                            )
+                        }
+                        StatusRenderMode::StandaloneFile => format!(
+                            r##"{}<a href="{}"><code>{}</code></a>"##,
+                            orig_source_line,
+                            escape_html(&href),
+                            escape_html(rel)
+                        ),
+                    }
+                }
                 _ if !orig_source_line.is_empty() => orig_source_line,
                 _ => r##"<span class="muted">No crop recorded (standalone / AI replica)</span>"##
                     .to_string(),
@@ -1402,9 +1750,10 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
                 .solution_json_path
                 .as_deref()
                 .map(|p| {
+                    let href = resolve_rel_href(mode, p);
                     format!(
                         r##"<div class="muted" style="margin-top:6px;">Solution JSON: <a href="{}"><code>{}</code></a></div>"##,
-                        escape_html(p),
+                        escape_html(&href),
                         escape_html(p)
                     )
                 })
@@ -1463,14 +1812,36 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
                 )
             };
 
+            let qstate = if row
+                .qa_status
+                .as_deref()
+                .is_some_and(|s| s == "verified" || s == "approved")
+            {
+                "verified"
+            } else {
+                "pending"
+            };
+            let search_haystack = format!(
+                "{} {} {} {} {}",
+                row.universal_id,
+                row.paper_id.as_deref().unwrap_or(""),
+                row.source_file.as_deref().unwrap_or(""),
+                row.compiled_title.as_deref().unwrap_or(""),
+                row.compiled_stem.as_deref().unwrap_or("")
+            )
+            .to_ascii_lowercase();
+
             let _ = write!(
                 html,
-                r##"          <tr>
+                r##"          <tr class="q-row" data-qstate="{qstate}" data-replica="{}" data-comments="{}" data-search="{}">
             <td><code>{}</code><div class="muted">{}</div></td>
             <td>{}</td>
             <td>{}</td>
           </tr>
 "##,
+                row.is_replica,
+                row.open_comment_count > 0,
+                escape_html(&search_haystack),
                 escape_html(&row.universal_id),
                 escape_html(row.paper_id.as_deref().unwrap_or(&row.subject)),
                 crop_cell,
@@ -1482,7 +1853,7 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
     html.push_str("    </section>\n");
 
     // 7. Open Snap Board Comments & Authoring Tasks
-    html.push_str("    <section>\n      <h2>7. Open <code>Snap Board</code> Comments &amp; Authoring Work Queue</h2>\n");
+    html.push_str("    <section data-section=\"comments\">\n      <h2>7. Open <code>Snap Board</code> Comments &amp; Authoring Work Queue</h2>\n");
     if report.open_comments.is_empty() && report.ledger.tasks.is_empty() {
         html.push_str(
             "      <p class=\"muted\">Zero open comments or queued authoring tasks.</p>\n",
@@ -1509,7 +1880,8 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
                     if let Some(uri) = oc.attachment_data_uris.get(&att.attachment_id) {
                         let _ = writeln!(
                             html,
-                            r##"          <img class="snap-thumb" src="{}" alt="Snap Board Attachment">"##,
+                            r##"          <img class="snap-thumb" data-lightbox-caption="{}" src="{}" alt="Snap Board Attachment">"##,
+                            escape_html(&format!("{} ({})", c.comment_id, c.target_id)),
                             escape_html(uri)
                         );
                     }
@@ -1565,7 +1937,91 @@ pub fn render_status_html(report: &ProductStatusReport) -> String {
             html.push_str("        </tbody>\n      </table>\n");
         }
     }
-    html.push_str("    </section>\n  </main>\n</body>\n</html>\n");
+    html.push_str(
+        r##"    </section>
+  </main>
+  <div id="img-lightbox" role="dialog" aria-modal="true" aria-label="Image Preview">
+    <div class="lightbox-card">
+      <img id="lightbox-img" src="" alt="Zoomed Preview">
+      <div class="lightbox-bar">
+        <span id="lightbox-caption"></span>
+        <button type="button" id="lightbox-close" class="filter-chip">Close (Esc)</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tabBtns = document.querySelectorAll("button.tab-chip[data-section-target]");
+      const sections = document.querySelectorAll("main > section[data-section]");
+      tabBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = btn.getAttribute("data-section-target");
+          tabBtns.forEach((b) => b.classList.toggle("active", b === btn));
+          sections.forEach((sec) => {
+            const match = target === "all" || sec.getAttribute("data-section") === target;
+            sec.classList.toggle("hidden-sec", !match);
+          });
+        });
+      });
+
+      let activeQFilter = "all";
+      const filterBtns = document.querySelectorAll("button.filter-chip[data-qfilter]");
+      const searchInput = document.getElementById("q-search-input");
+      const qRows = document.querySelectorAll("tr.q-row");
+
+      function applyQuestionFilter() {
+        const q = searchInput ? searchInput.value.trim().toLowerCase() : "";
+        qRows.forEach((row) => {
+          let ok = true;
+          if (activeQFilter === "verified") ok = row.getAttribute("data-qstate") === "verified";
+          else if (activeQFilter === "pending") ok = row.getAttribute("data-qstate") === "pending";
+          else if (activeQFilter === "replica") ok = row.getAttribute("data-replica") === "true";
+          else if (activeQFilter === "comments") ok = row.getAttribute("data-comments") === "true";
+          if (ok && q) {
+            const hay = row.getAttribute("data-search") || "";
+            ok = hay.indexOf(q) !== -1;
+          }
+          row.classList.toggle("hidden-row", !ok);
+        });
+      }
+
+      filterBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          activeQFilter = btn.getAttribute("data-qfilter") || "all";
+          filterBtns.forEach((b) => b.classList.toggle("active", b === btn));
+          applyQuestionFilter();
+        });
+      });
+      if (searchInput) {
+        searchInput.addEventListener("input", applyQuestionFilter);
+      }
+
+      const lb = document.getElementById("img-lightbox");
+      const lbImg = document.getElementById("lightbox-img");
+      const lbCap = document.getElementById("lightbox-caption");
+      const lbClose = document.getElementById("lightbox-close");
+      function closeLightbox() {
+        if (lb) lb.classList.remove("open");
+      }
+      document.querySelectorAll("img.crop-preview, img.snap-thumb").forEach((img) => {
+        img.addEventListener("click", () => {
+          if (!lb || !lbImg) return;
+          lbImg.src = img.src;
+          if (lbCap) lbCap.textContent = img.getAttribute("data-lightbox-caption") || img.alt || "";
+          lb.classList.add("open");
+        });
+      });
+      if (lb) {
+        lb.addEventListener("click", (e) => { if (e.target === lb) closeLightbox(); });
+      }
+      if (lbClose) lbClose.addEventListener("click", closeLightbox);
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLightbox(); });
+    })();
+  </script>
+</body>
+</html>
+"##,
+    );
     html
 }
 

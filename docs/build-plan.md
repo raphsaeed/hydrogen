@@ -11,8 +11,9 @@
 | :---: | :--- | :---: |
 | **Phase 1** | Workspace Infrastructure & Core Sibling Wiring (`memory_core_rs` + `theta_calc` + `Carbon`) | `[x] Complete` |
 | **Phase 2** | Domain Blueprints, Quality Gates, PDF Slicer & Core CLI | `[x] Complete` |
-| **Phase 3** | Product Authoring Ledger (`ledger.json` + `status.html`), Two-Way Carbon `--watch` Sync & Visual/Media CLI | `[x] Complete` |
-| **Phase 4** | **Milestone 1 Proving Ground:** 1st Real 11+ Maths Paper (`GYR-MTH-P001`) End-to-End | `[ ] Next` |
+| **Phase 3** | Sub-Product Authoring Ledger (`ledger.json` + `status.html`), Two-Way Carbon `--watch` Sync & Visual/Media CLI | `[x] Complete` |
+| **Phase 3A** | Carbon Warm-Paper Status & Multi-Product Explorer Server (`hydrogen serve` via `axum` on `:7430`) | `[ ] Next` |
+| **Phase 4** | **Milestone 1 Proving Ground:** 1st Real 11+ Maths Paper (`GYR-MTH-P001`) End-to-End | `[ ] Pending` |
 | **Phase 5** | Live Teaching Feedback (`Snap Board` Fixes), Replicas & Organic Topic Cards | `[ ] Pending` |
 | **Phase 6** | Clean Customer Release Pipeline, Books/Chapters & Multi-Subject Vault Rollout | `[ ] Pending` |
 | **Phase 7** | Zero-Install Web Browser Delivery (`carbon-web` WASM + `theta.wasm` + Web Vault Gateway) | `[ ] Pending` |
@@ -116,7 +117,53 @@
     - `hydrogen put-asset <file.png|svg|mp4|mp3> --asset-id <ID> [--alt "..."] [--caption "..."]`
     - `hydrogen comments [list | show <id> [--export-dir <dir>] | resolve <id> --note "..."]`
 
-> **Phase 3 Exit Check:** `cargo clippy --all-targets -- -D warnings` and `cargo test` pass with zero new heavy dependencies; `hydrogen status --html` generates `products/gyaraplus/maths/status.html`; `hydrogen capture-carbon GYR-MTH-P001-Q015 --check-bounds` verifies bounds and saves a crisp headless Carbon PNG; `preview-carbon --watch` persists a simulated/live `Snap Board` comment round-trip into `gyara-maths.sqlite`.
+> **Phase 3 Exit Check:** `cargo clippy --all-targets -- -D warnings` and `cargo test` pass with zero new heavy dependencies; `hydrogen status --html` generates `products/gyaraplus/maths/status.html` (with `assets/hydrogen-logo.png`, `vaultSummary`, section tabs, filter chips & lightbox); `hydrogen capture-carbon GYR-MTH-P001-Q015 --check-bounds` verifies bounds and saves a crisp headless Carbon PNG; `preview-carbon --watch` persists a simulated/live `Snap Board` comment round-trip into `gyara-maths.sqlite`.
+
+---
+
+## Phase 3A: Carbon Warm-Paper Status & Multi-Product Explorer Server (`hydrogen serve` via `axum` on `:7430`)
+*Goal: Provide a lightweight, pure-Rust `axum` HTTP server (`hydrogen serve [--lan] [--port 7430]`) styled in Carbon's Warm-Paper Light Theme (`#FDFBF7` paper, `#F2ECE1` chrome, `#FFFFFF` cards, 12-subject muted mineral accents, and `assets/hydrogen-logo.png`) so the founder can browse active Products → Sub-Products → Status dashboards, view crops/PDFs/pages directly from MacBook/iPad browsers (`http://192.168.68.52:7430/`), and add interactive authoring actions over time.*
+
+### Locked Phase 3A Design Decisions
+1. **Ports & LAN Binding:**
+   - **`:7420`** = Carbon Whiteboard & Full-Stage Course Gallery (`carbon-shell --headless --lan --split --port 7420`).
+   - **`:7430`** = Hydrogen Status & Product Explorer Server (`hydrogen serve` defaults to `127.0.0.1:7430` from `HydrogenConfig::bind_addr`; `--lan` binds `0.0.0.0:7430` for MacBook/iPad access at `http://192.168.68.52:7430/` Ethernet or `http://192.168.68.85:7430/` Wi-Fi; `--port <N>` overrides port).
+2. **Active-Only Discovery (Zero Clutter):**
+   - **Workspace Landing Page (`GET /`)** uses `discover_active_products(&cfg)` and **hides any product with `0` active sub-products** (e.g. an unstarted `products/gcse/` with only `assets/.gitkeep` is hidden until at least one sub-product like `gcse/maths` has a vault, `ledger.json`, or files in `inbox/`/`archive/`).
+   - **Product View (`GET /products/{product}`)** uses `discover_product_subjects(&cfg, product)` and renders **Sub-Product Cards** strictly for worked sub-product folders present on disk (e.g. only `maths` under `gyaraplus`, or only `maths` and `physics` under `gcse`).
+3. **Instant `< 2 ms` Card Grid Scanning via `ledger.json` `vaultSummary`:**
+   - Landing (`/`) and Product (`/products/{product}`) pages read each active sub-product's `ledger.json` (`vaultSummary` + `sources` + `papers` + `tasks`) without decrypting SQLCipher `.sqlite` vaults on every page load, keeping multi-product card grids `< 2 ms` instant, while providing an explicit **`POST /api/products/{product}/{subject}/sync`** ("Sync Vault") endpoint that opens `<stem>.sqlite` (respecting Rule A6), refreshes `ledger.json` + `status.html`, and redirects/returns updated JSON.
+4. **Unified Sub-Product Status Renderer (`StatusRenderMode::Server`):**
+   - **Sub-Product View (`GET /products/{product}/{subject}`)** reuses `render_status_html_with_mode(report, &StatusRenderMode::Server { ... })` from `src/ingest/report.rs`—giving the exact same Carbon Warm-Paper dashboard as `status.html` (section tabs, question filter chips, instant search, replica lineage, click-to-zoom lightbox), with clickable `Products ▸ <product> ▸ <subject>` breadcrumbs and lazy-loaded HTTP URLs instead of multi-MB inline base64 strings.
+5. **Brand Logos:**
+   - Top-level Hydrogen header & Landing Page (`GET /`) display the Git-tracked Hydrogen mark (`assets/hydrogen-logo.png`, served at `GET /assets/hydrogen-logo.png`).
+   - Product cards & sub-product headers display each product's shared brand logo from `products/<product>/assets/` (e.g. `gyara-blue.png` served at `GET /products/{product}/brand-logo`).
+
+### Phase 3A Sub-Steps
+- [ ] **3A.1 Lean `axum` Dependency & `src/server/` Module Scaffolding (`Cargo.toml`, `src/lib.rs`, `src/server/mod.rs`):**
+  - Add minimal pure-Rust `axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }` to `Cargo.toml` (keeping `unsafe_code = "forbid"`, `unwrap_used = "deny"`, `expect_used = "deny"`, and `panic = "deny"`).
+  - Create `src/server/` (`mod.rs`, `scanner.rs`, `views.rs`, `routes.rs`) sharing `HydrogenConfig` and strict path-traversal validation (`validate_slug` rejecting `..`, `/`, `\`, hidden `.` segments, and `.sqlite`/`.keys.json`/`.raphs` secret files).
+- [ ] **3A.2 Workspace Scanner, Carbon Light Landing Page (`/`) & Product Sub-Cards Page (`/products/{product}`):**
+  - Implement fast `< 2 ms` workspace roll-up scanner (`scan_workspace_overview`, `scan_product_overview`) aggregating active products (`>= 1` active sub-product) and sub-products from `ledger.json` (`vaultSummary`, paper progress, SHA-256 `inbox/` queue, duplicate warnings, replicas, open comments, pending tasks).
+  - Render Carbon Warm-Paper HTML pages:
+    - `GET /` — **Hydrogen Workspace Landing Page:** Top chrome bar with `assets/hydrogen-logo.png` + global KPIs (Active Products, Active Sub-Products, Verified Qs, Replicas, Queued Inbox Files, Open Comments, Pending Tasks) + **Product Cards** (product brand logo, active sub-product mineral chips, overall progress bar, alert badges, click to open `/products/{product}`).
+    - `GET /products/{product}` — **Product Explorer Page:** Breadcrumb (`Products ▸ {product}`), product brand header, and **Sub-Product Cards** (12-subject muted mineral left border `#5B7DB1` / `#4D8B7A` / `#568A9E`, `<stem>.raphs` badge, paper progress bar, verified/sliced/missing counts, replicas, inbox queue, open comments, click to open `/products/{product}/{subject}`).
+- [ ] **3A.3 Unified Sub-Product Status Route, Safe Local File Streaming & Live JSON / Sync Endpoints:**
+  - `GET /products/{product}/{subject}` — Renders the sub-product status page via `render_status_html_with_mode(..., StatusRenderMode::Server { ... })` (supporting `?refresh=1` or fast cached `ledger.json` + optional `.sqlite` open when `vaultSummary` is absent).
+  - `GET /products/{product}/{subject}/files/{*rel_path}` — Strictly sandboxed read-only file streamer serving ONLY allowed subtrees (`inbox/**` and `archive/**`: `.pdf`, `.png`, `.jpg`, `.svg`, `.json`, `.mp4`, `.mp3`) with canonicalized/normalized path checks so `.sqlite`, `.keys.json`, `.raphs`, and `..` traversal are rejected with `403`/`404`.
+  - `GET /assets/hydrogen-logo.png` & `GET /products/{product}/brand-logo` — Serve PNG brand logos with proper `image/png` headers.
+  - `GET /health` (`{"status":"ok","service":"hydrogen","version":"0.1.0"}`), `GET /api/overview`, `GET /api/products/{product}`, `GET /api/products/{product}/{subject}`, and `POST /api/products/{product}/{subject}/sync` (re-syncs `<stem>.sqlite` -> `ledger.json` + `status.html` on demand).
+- [ ] **3A.4 `hydrogen serve` CLI Subcommand & End-to-End Integration Tests (`src/main.rs` & `tests/phase3a_server.rs`):**
+  - Add `hydrogen serve [--lan] [--port 7430] [--bind <ip:port>]` to `src/main.rs` (and document in `--help`, `docs/sop.md`, and `docs/system-architecture.md`), printing local and LAN URLs on startup + graceful `Ctrl+C` shutdown.
+  - Add `tests/phase3a_server.rs` verifying:
+    - `GET /health` & `GET /assets/hydrogen-logo.png`,
+    - `GET /` shows active `gyaraplus` Product Card and **hides** empty `gcse` (`0` active sub-products),
+    - `GET /products/gyaraplus` shows only active `maths` Sub-Product Card (`gyara-maths.raphs`) and hides unworked subjects,
+    - `GET /products/gyaraplus/maths` renders the Carbon Warm-Paper status dashboard with breadcrumbs, tabs, filter chips, replica lineage, and lazy file URLs,
+    - `GET /products/gyaraplus/maths/files/archive/...` serves crop PNGs & `<QID>.json` (`200 OK`) while blocking `..` traversal and `gyara-maths.keys.json` / `gyara-maths.sqlite` (`403`/`404`),
+    - `POST /api/products/gyaraplus/maths/sync` refreshes `vaultSummary` & `status.html`.
+
+> **Phase 3A Exit Check:** `cargo clippy --all-targets -- -D warnings` and `cargo test` pass 100%; `hydrogen serve --lan --port 7430` serves crisp Carbon Warm-Paper Product → Sub-Product → Status pages on `http://192.168.68.52:7430/` with `assets/hydrogen-logo.png`, `< 2 ms` card scanning, working crop/PDF/JSON links, and zero Clean-Room or secret-file leaks.
 
 ---
 

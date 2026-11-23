@@ -38,7 +38,7 @@ The curriculum and tutoring platform is composed of **five specialized Rust-firs
 
 | Component | Role Type | Repository / Crate Pin | Default Port / Binding | What It Owns | What It MUST NEVER Do |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| **`Hydrogen`** *(This Repo)* | **Authoring Conductor & Vault CLI** (Pure-Rust CLI + Product Ledger + Static `status.html`) | `/home/raphspark/projects/hydrogen`<br>`git@github.com:raphsaeed/hydrogen.git` (`main`) | CLI + outbound WS to Carbon `:7420` | PDF/image slicing, product authoring ledger (`ledger.json` + `status.html`), 4-tier `rules/` loading, `L9→L1` blueprint & quality gate (`Theta` + headless `Carbon` `captureBoard`), two-way Carbon `--watch` preview & `Snap Board` comment sync, replica/topic scaffolding, and `.raphs` packaging/clean export. | Never runs during student lessons; never stores student stats in `<product>-<subject>.raphs`; never leaks raw PDF scans/names into `.raphs` or Git; **never modifies sibling repos**. |
+| **`Hydrogen`** *(This Repo)* | **Authoring Conductor, Vault CLI & Status Server** (Pure-Rust CLI + `axum` `:7430` Explorer + Unified `ledger.json` & `status.html`) | `/home/raphspark/projects/hydrogen`<br>`git@github.com:raphsaeed/hydrogen.git` (`main`) | `:7430` (`hydrogen serve`) + outbound WS to Carbon `:7420` | PDF/image slicing, sub-product `ledger.json` (`vaultSummary`, SHA-256 sources, crops, replica lineage & tasks), Carbon Warm-Paper `status.html` & `:7430` multi-product explorer (`hydrogen serve`), 4-tier `rules/` loading, `L9→L1` quality gate (`Theta` + headless `Carbon` `captureBoard`), two-way Carbon `--watch` sync, and `.raphs` packaging/clean export. | Never runs during student lessons; never stores student stats in `<product>-<subject>.raphs`; never leaks raw PDF scans/names into `.raphs` or Git; **never modifies sibling repos**. |
 | **`memory.raphs`** (`memory_core_rs`) | **Embedded Encrypted Vault Engine** (Library Crate) | `ssh://git@github.com/raphs-app/raphs.git` (`tag = "memory-core-1.7.0"`, Schema `2.3.0`) | *In-process library* | SQLCipher `4.14` encryption, `L7` `course_*` tables, `L1–L6` learner memory tables, FTS5 + `vec0` RRF search, 3-way ref-counted `blobs`, `< 1 ms` `course_catalog_snapshot()`, and `export_clean_course_bundle()`. | Never opens network ports, never renders UI, and never executes math or LLM calls. Enforces 1 `Memory` handle per vault file per process (Rule A6). |
 | **`Theta`** (`theta_calc`) | **Deterministic CAS & Graph VM** (Library Crate + `.wasm`) | `/home/raphspark/projects/theta/crates/calc-api` (`package = "calc-api"`, crate `theta_calc`) | *In-process library* / `.wasm` | Exact rational/symbolic arithmetic, mixed fractions, equation solving, 313-formula registry (`FIFA`), stats working, 120 FPS Graph VM landmarks, and `\htmlId` KaTeX token emission (`< 50 µs`). | **Read-only sibling.** Stateless pure computation: never opens `.raphs` vaults, never calls LLMs, and never initiates network connections. |
 | **`Carbon`** (`carbon-shell` & `carbon-web`) | **120Hz Interactive Whiteboard & Gallery Stage** (Native, Headless & WASM) | `/home/raphspark/projects/carbon` *(prebuilt)*<br>`ssh://git@github.com/raphsaeed/carbon.git` (`carbon-protocol` on `main`) | `:7420` (`/carbon`, `/health`, `/` WebGL2) | Full-Stage Warm-Paper Course Gallery (`displayMode: "full-stage"`), Slide-Over Index, Split `Question \| Working` panes, 5 Curated Font Voices + `PennstanderMath`, 22 2D macros, 3D math stage, stylus ink/rubber, deterministic `captureBoard` PNGs, and `Snap Board` Comment Drawer. | **Read-only sibling.** Pure rendering stage & input emitter: **never** opens `.raphs` vaults directly, **never** calls LLMs, and **never** owns student persistence or curriculum rules. |
@@ -168,9 +168,11 @@ sequenceDiagram
 
 ### 3.4 Three Operating Deployment Topologies (Same Core Crates, Zero Forked Branches)
 
-1. **Authoring, Headless QA & Live Preview Topology (Founder Workflow — DGX Spark + MacBook / iPad):**
-   - **DGX Spark (`Linux`):** Antigravity drives the `hydrogen` Rust CLI over SSH, reading/writing `gyara-maths.sqlite`/`.raphs`, `ledger.json`, and `status.html`, and verifying board geometry & rendered PNGs against the prebuilt local `carbon-shell --headless --lan --split --port 7420` (`ws://127.0.0.1:7420/carbon`).
-   - **MacBook / iPad Live Viewing & Commenting:** Either open DGX Spark's zero-install 120Hz WebGL2 mirror (`http://192.168.68.52:7420/` Ethernet / `http://192.168.68.85:7420/` Wi-Fi) or run native macOS `carbon-shell --lan --split` (`ws://192.168.68.64:7420/carbon`) driven by `hydrogen preview-carbon --watch` — navigating all `Levels 9 → 1` and saving `Snap Board` comments straight back into `gyara-maths.sqlite` and `ledger.json`.
+1. **Authoring, Headless QA, Status Explorer & Live Preview Topology (Founder Workflow — DGX Spark + MacBook / iPad):**
+   - **DGX Spark (`Linux`):** Antigravity drives the `hydrogen` Rust CLI over SSH, reading/writing `gyara-maths.sqlite`/`.raphs`, `ledger.json`, and `status.html`, verifying board geometry & rendered PNGs against `carbon-shell --headless --lan --split --port 7420` (`ws://127.0.0.1:7420/carbon`), and serving the Carbon Warm-Paper Multi-Product Status Explorer via `hydrogen serve --lan --port 7430` (`Phase 3A`).
+   - **MacBook / iPad Live Viewing, Status Browsing & Commenting:**
+     - **`:7430` (`http://192.168.68.52:7430/`):** Browse active Products $\to$ Sub-Products $\to$ unified `status.html` dashboards, inspect 180 DPI crops/pages/PDFs/`<QID>.json`, and trigger live vault syncs.
+     - **`:7420` (`http://192.168.68.52:7420/` Ethernet / `http://192.168.68.85:7420/` Wi-Fi, or native macOS `ws://192.168.68.64:7420/carbon`):** Navigate all `Levels 9 → 1` at 120Hz via `hydrogen preview-carbon --watch` and save `Snap Board` comments straight back into `gyara-maths.sqlite` and `ledger.json`.
 2. **Native Offline Student / Classroom Topology:**
    - A single local app bundle runs **SIGMA** + `memory_core_rs` (local `gyara-maths.raphs` + `<student>.raphs`) + `theta_calc` + `carbon-shell` (`ws://127.0.0.1:7420/carbon`)—100% offline with zero cloud latency or recurring server cost.
 3. **Zero-Install Web Browser Topology (Phase 7 — Individual B2C Users on Any Device):**
@@ -186,8 +188,10 @@ Within `/home/raphspark/projects/hydrogen`, Hydrogen is a lean, zero-bloat pure-
 ```text
 hydrogen/
 ├── Cargo.toml                              # Rust Edition 2024 manifest (forbid unsafe; deny unwrap/expect/panic)
-├── hydrogen.toml                           # Workspace defaults (products_dir, rules_dir, carbon_ws_url, device_id)
+├── hydrogen.toml                           # Workspace defaults (products_dir, rules_dir, bind_addr :7430, carbon_ws_url :7420)
 ├── .env                                    # GIT-IGNORED: Local secrets & endpoints (HYDROGEN_LESSON_KEY, CARBON_WS_URL)
+├── assets/
+│   └── hydrogen-logo.png                   # GIT-TRACKED: Hydrogen application mark (landing page & status header)
 ├── docs/                                   # Ecosystem & Hydrogen specifications
 │   ├── sop.md                              # Standard Operating Procedure, ways of working, CLI playbook & tricks
 │   ├── system-architecture.md              # <--- This master ecosystem & Hydrogen architecture doc
@@ -228,7 +232,8 @@ hydrogen/
 │   ├── vault/                              # `VaultManager` (`Mutex<Memory>`), PNG logo seeder, comment/asset helpers & clean exporter
 │   ├── theta/                              # In-process `ThetaService` (`theta_calc`), mixed-fraction normalizer & `A-E` MCQ gate
 │   ├── carbon/                             # `CarbonClient` WS driver (`captureBoard`, `getState` bounds, Full-Stage Catalog, `--watch` sync)
-│   ├── ingest/                             # Pure-Rust `hayro` PDF slicer, unified `ledger.rs` & static `status.html` `report.rs`
+│   ├── ingest/                             # Pure-Rust `hayro` PDF slicer, unified `ledger.rs` & dual-mode `status.html` `report.rs`
+│   ├── server/                             # (Phase 3A) `axum` `:7430` Carbon Warm-Paper Multi-Product & Sub-Product Explorer (`hydrogen serve`)
 │   └── compiler/                           # Deterministic `gate.rs` (Theta + Carbon + Warm-Paper + 5 Font Voices + KaTeX + Clean-Room)
 └── tests/                                  # End-to-end pipeline integration tests
 ```
@@ -267,17 +272,18 @@ hydrogen/
 - Resolves strictly within the target product directory so GCSE, A-Level, 11+, Primary, and Infant rules never bleed across products:
   `rules/common.md` $\to$ `rules/<product>/common.md` $\to$ `rules/<product>/<subject>/common.md` $\to$ `rules/<product>/<subject>/levels.md` *(+ optional tier overlay `foundation.md` / `higher.md`)*.
 
-### 5.5 Sub-Product Authoring Ledger & Static `status.html` Dashboard (`src/ingest/ledger.rs` & `report.rs`)
-Because `<product>-<subject>.raphs` is strictly per-subject and Clean-Room anonymized, each active sub-product folder (`products/<product>/<subject>/`) maintains its own lightweight, Git-ignored ledger at `products/<product>/<subject>/ledger.json` paired with a zero-server visual dashboard at `products/<product>/<subject>/status.html`:
+### 5.5 Sub-Product Authoring Ledger, Dual-Mode `status.html` & `:7430` Explorer Server (`src/ingest/` & `src/server/`)
+Because `<product>-<subject>.raphs` is strictly per-subject and Clean-Room anonymized, each active sub-product folder (`products/<product>/<subject>/`) maintains its own lightweight, Git-ignored unified ledger at `products/<product>/<subject>/ledger.json` (`Schema 2.0`) paired with a Carbon Warm-Paper visual dashboard (`status.html` + `hydrogen serve` on `:7430`):
 - **Zero-Drift Hybrid Responsibility:**
   - **Sub-Product `.sqlite` Vaults (`gyara-maths.sqlite`, `gyara-english.sqlite`, `gcse-maths.sqlite`, ...):** Remain the **single source of truth** for compiled papers, questions, `L9 → L1` solutions, topics, concept cards, media blobs, revisions, and `course_comments`.
-  - **`products/<product>/<subject>/ledger.json`:** Tracks what `.raphs` intentionally excludes:
-    1. **Inbox & Source File Inventory (`sha256` deduplicated):** Every raw PDF/book/image discovered in `products/<product>/<subject>/{inbox,archive}/`, preventing duplicate ingestion even if renamed, along with its assigned `paper_id` and lifecycle state (`queued` $\to$ `sliced` $\to$ `in_progress` $\to$ `completed`).
-    2. **Paper Expectations & Item Checklist:** Expected total question count per paper (e.g., `GYR-MTH-P001`: `50` questions), missing/pending question slots (`Q002..Q014`), per-question original source/crop/JSON provenance, and author QA notes.
-    3. **Authoring Task Queue:** Pending replica requests (from Carbon's `⋮` menu or CLI), planned topic/prerequisite cards, and notes.
-- **`hydrogen status [--product <slug>] [--subject <slug>] [--html]`:**
-  - Discovers only **active** sub-product folders under `products/<product>/` (never cluttering output with unworked subjects), merging live `inbox/` scans + `ledger.json` + `CourseCatalogSnapshot`.
-  - Prints a concise terminal briefing (giving any Antigravity session instant situational awareness) and generates a self-contained Warm-Paper `products/<product>/<subject>/status.html` report featuring vault metrics, paper progress bars, topic coverage tables, side-by-side `archive/` crop vs. compiled question previews, and open `Snap Board` screenshots.
+  - **`products/<product>/<subject>/ledger.json` (`Schema 2.0`):** Single local JSON store per sub-product tracking what `.raphs` intentionally excludes:
+    1. **Cached `vaultSummary`:** Scalar snapshot (`courseId`, `title`, `paperCount`, `verifiedQuestionCount`, `replicaCount`, `topicCount`, `topicCardCount`, `openCommentCount`) enabling `< 2 ms` multi-product card scanning in `hydrogen serve` without decrypting SQLCipher `.sqlite` vaults on every HTTP request.
+    2. **Inbox & Source File Inventory (`sha256` deduplicated):** Every raw PDF/book/image discovered in `products/<product>/<subject>/{inbox,archive}/`, flagging renamed duplicates automatically and tracking `paper_id` + stage (`queued` $\to$ `sliced` $\to$ `in_progress` $\to$ `completed`).
+    3. **Paper Raster Geometry, Expectations & Item Checklist:** `pageCount`, `dpi`, rendered `pages[]`, `expectedQuestions`, missing slots (`Q002..Q014`), per-question `bbox`/`bboxPx`/`cropPath`/`solutionJsonPath`, two-way replica lineage (`single_question` vs. `whole_paper` + parent references), and QA notes.
+    4. **Authoring Task Queue:** Pending replica requests (from Carbon's `⋮` menu or CLI), planned topic/prerequisite cards, and notes.
+- **`hydrogen status` & `hydrogen serve` (`Phase 3A`, `:7430`):**
+  - `discover_active_products` and `discover_product_subjects` surface **only active products (`>= 1` active sub-product) and active sub-products**—untouched products/subjects never clutter cards, `ledger.json`, or `status.html`.
+  - `render_status_html_with_mode` (`StatusRenderMode::{StandaloneFile, Server}`) powers both self-contained `products/<product>/<subject>/status.html` files and the live `axum` `:7430` web explorer (`GET /` Product Cards with `assets/hydrogen-logo.png` $\to$ `GET /products/{product}` Sub-Product Cards $\to$ `GET /products/{product}/{subject}` tabbed/filterable status dashboard with lightbox & sandboxed `inbox/`/`archive/` file streaming).
 
 ### 5.6 End-to-End Antigravity + Hydrogen CLI Authoring Sequence
 

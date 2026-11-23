@@ -125,6 +125,17 @@ impl HydrogenConfig {
         })
     }
 
+    /// Git-tracked Hydrogen application logo path (`assets/hydrogen-logo.png`).
+    pub fn hydrogen_logo_path(&self) -> PathBuf {
+        let primary = self.workspace_root.join("assets").join("hydrogen-logo.png");
+        if primary.is_file() {
+            primary
+        } else {
+            let legacy = self.workspace_root.join("assets").join("Hydrogen.png");
+            if legacy.is_file() { legacy } else { primary }
+        }
+    }
+
     /// Root directory for a product (`products/<product>`, e.g., `products/gyaraplus`).
     pub fn product_dir(&self, product: &str) -> PathBuf {
         self.products_dir.join(product)

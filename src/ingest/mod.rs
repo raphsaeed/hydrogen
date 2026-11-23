@@ -9,14 +9,15 @@ pub mod slicer;
 pub use ledger::{
     AuthoringTask, AuthoringTaskKind, AuthoringTaskStatus, ItemLedgerEntry, LEDGER_SCHEMA_VERSION,
     NormalizedBBox, PaperLedgerEntry, PixelBBox, ProductLedger, RenderedPageRecord, ReplicaScope,
-    SlicedCropRecord, SlicedPaperRecord, SourceFileEntry, SourceStage, derive_parent_paper_id,
-    derive_question_replica_lineage, format_question_number_ranges, sha256_file,
-    subject_slug_for_prefix, sync_and_save_subject_ledger,
+    SlicedCropRecord, SlicedPaperRecord, SourceFileEntry, SourceStage, VaultSummary,
+    derive_parent_paper_id, derive_question_replica_lineage, format_question_number_ranges,
+    sha256_file, subject_slug_for_prefix, sync_and_save_subject_ledger,
 };
 pub use report::{
-    OpenCommentEntry, ProductStatusReport, SideBySideQuestionRow, SubjectStatusCard,
-    TopicCoverageRow, build_subject_status_report, discover_product_subjects, escape_html,
-    format_terminal_status, refresh_subject_ledger_and_optional_html, render_status_html,
+    OpenCommentEntry, ProductStatusReport, SideBySideQuestionRow, StatusRenderMode,
+    SubjectStatusCard, TopicCoverageRow, build_subject_status_report, discover_active_products,
+    discover_product_subjects, escape_html, format_terminal_status,
+    refresh_subject_ledger_and_optional_html, render_status_html, render_status_html_with_mode,
     write_status_html,
 };
 pub use slicer::{

@@ -38,6 +38,7 @@ use hydrogen::ingest::{
     subject_slug_for_prefix, write_status_html,
 };
 use hydrogen::rules::RuleLoader;
+use hydrogen::server::{resolve_serve_bind_addr, run_server};
 use hydrogen::theta::{StagePresetConfig, ThetaService};
 use hydrogen::vault::VaultManager;
 use hydrogen::vault::seed::{GYR_LOGO_BLUE_ID, GYR_LOGO_WHITE_ID};
@@ -68,6 +69,7 @@ async fn run_cli() -> Result<()> {
     match subcmd {
         "doctor" => cmd_doctor(&args[1..]).await,
         "status" => cmd_status(&args[1..]).await,
+        "serve" => cmd_serve(&args[1..]).await,
         "init-vault" => cmd_init_vault(&args[1..]).await,
         "slice-paper" => cmd_slice_paper(&args[1..]).await,
         "theta" => cmd_theta(&args[1..]),
@@ -106,6 +108,8 @@ SUBCOMMANDS:
     doctor [--carbon <ws-url>]              Verify 4-Tier Rules, Theta (<1ms), Vault (Schema 2.3.0), & Carbon WS
     status [--product <slug>] [--subject <slug>] [--set-expected <paper-id> <count>] [--note <paper-id> \"...\"] [--html] [--json]
                                             Inspect active sub-product inbox queue, ledger.json, paper/topic progress & status.html
+    serve [--lan] [--port 7430] [--bind <ip:port>]
+                                            Start Carbon Warm-Paper Multi-Product & Sub-Product Status Server on :7430
     init-vault [--product P] [--subject S] [--pack]
                                             Initialize/seed L7 vault + PNG brand logo blobs
     slice-paper <pdf-or-png> [OPTIONS]      Render pages & slice clean-room crops into archive/ + ledger.json
@@ -1029,6 +1033,51 @@ async fn cmd_status(args: &[String]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+async fn cmd_serve(args: &[String]) -> Result<()> {
+    let cfg = HydrogenConfig::load(workspace_root()?)?;
+    let mut lan = false;
+    let mut port_override: Option<u16> = None;
+    let mut bind_override: Option<String> = None;
+
+    let mut idx = 0usize;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--lan" => lan = true,
+            "--port" => {
+                idx += 1;
+                let p_str = args
+                    .get(idx)
+                    .ok_or_else(|| HydrogenError::Config("--port requires <port>".into()))?;
+                let p = p_str.parse::<u16>().map_err(|_| {
+                    HydrogenError::Config(format!("invalid --port integer '{p_str}'"))
+                })?;
+                if p == 0 {
+                    return Err(HydrogenError::Config("--port must be >= 1".into()));
+                }
+                port_override = Some(p);
+            }
+            "--bind" => {
+                idx += 1;
+                let b_str = args
+                    .get(idx)
+                    .cloned()
+                    .ok_or_else(|| HydrogenError::Config("--bind requires <ip:port>".into()))?;
+                bind_override = Some(b_str);
+            }
+            unknown => {
+                return Err(HydrogenError::Config(format!(
+                    "unrecognized serve option '{unknown}' (usage: `hydrogen serve [--lan] [--port 7430] [--bind <ip:port>]`)"
+                )));
+            }
+        }
+        idx += 1;
+    }
+
+    let bind_addr =
+        resolve_serve_bind_addr(&cfg.bind_addr, lan, port_override, bind_override.as_deref())?;
+    run_server(cfg, bind_addr).await
 }
 
 async fn cmd_put_asset(args: &[String]) -> Result<()> {

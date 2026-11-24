@@ -9,6 +9,7 @@ pub mod domain;
 pub mod error;
 pub mod ingest;
 pub mod rules;
+pub mod server;
 pub mod theta;
 pub mod vault;
 

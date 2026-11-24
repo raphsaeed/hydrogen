@@ -59,13 +59,14 @@ flowchart TB
         PrivateStore[("Local Private Store (Git-Ignored): archive/ Crops + ledger.json + status.html")]
         Antigravity["ANTIGRAVITY — Interactive & Background SSH Authoring Conductor (+ Parallel Subagents)"]
 
-        subgraph HydrogenBox["HYDROGEN — Pure-Rust Curriculum Engine (`hydrogen` CLI)"]
+        subgraph HydrogenBox["HYDROGEN — Pure-Rust Curriculum Engine (`hydrogen` CLI & `:7430` Dashboard)"]
             direction LR
             H_Ingest["1. PDF/PNG Slicer & Product Ledger"]
             H_Rules["2. 4-Tier RuleLoader"]
             H_Gate["3. Quality Gate (Theta + Carbon + Warm-Paper + Clean-Room)"]
             H_Capture["4. Headless Carbon Visual & Bounds Verifier"]
             H_Watch["5. Two-Way Carbon --watch Preview & Comment Sync"]
+            H_Serve["6. Hydrogen Dashboard Server (axum :7430)"]
         end
 
         ThetaCompile["THETA (theta_calc In-Process) — Compile-Time Math & A-E MCQ Gate (< 50 us)"]
@@ -74,6 +75,7 @@ flowchart TB
         RawPapers -->|"Scan SHA-256 & slice"| H_Ingest
         ProductAssets -->|"Rules + PNG Logos"| H_Rules
         H_Ingest <-->|"Track crops, queue & status.html"| PrivateStore
+        H_Serve <-->|"< 2 ms ledger.json + sandboxed files/"| PrivateStore
         Antigravity <-->|"Drive CLI, inspect crops/PNGs & author L9..L1 JSON"| HydrogenBox
         H_Gate -->|"Verify every step & A-E option"| ThetaCompile
         H_Capture <-->|"ws://127.0.0.1:7420/carbon"| CarbonHeadless
@@ -94,6 +96,7 @@ flowchart TB
 
     H_Gate ==>|"Upsert verified L7 items & PNG Blobs + Clean Export"| CourseVault
     H_Watch <==>|"Read Catalog/Steps & Persist Snap Board Comments"| CourseVault
+    H_Serve -.->|"Rule A6 Vault Sync (POST .../sync)"| CourseVault
     H_Watch <==>|"Live Author Preview (authorMode: true) over WS :7420"| CarbonStage
 
     CourseVault ==>|"Read-Only L7 Curriculum + GYR-LOGO-BLUE Blob"| Sigma
@@ -115,6 +118,7 @@ Every connection in the ecosystem has an explicit **Driver (Caller)**, **Target 
 | **1** | **Hydrogen CLI** | **`Theta` (`theta_calc`)** | In-process Rust crate (`calc-api`) | Authoring / Compile | Calls `calc.eval`, `calc.solve`, `calc.formula`, `calc.transform`, `calc.stats`, `calc.analyze_graph` (`< 50 µs`) to compute exact rationals, mixed fractions, `\htmlId` KaTeX tokens, graph landmarks, and verify all 5 `A–E` MCQ distractors. |
 | **2** | **Hydrogen CLI** | **`Course .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L7`) | Authoring / Export | Writes `course_meta` (including `GYR-LOGO-BLUE` & `GYR-LOGO-WHITE` PNG blobs), papers, sections, books/chapters, topics, cards, stimuli, questions (`question_json` + `solution_json`), persists/resolves `course_comments`, and runs `export_clean_course_bundle()`. |
 | **3** | **Hydrogen CLI** *(`capture-carbon` & `preview-carbon --watch`)* | **`Carbon`** (`carbon-shell`) | WebSocket (`ws://127.0.0.1:7420/carbon` headless on DGX Spark or `ws://192.168.68.64:7420/carbon` on MacBook) | Visual QA & Live Author Preview | Sends `config.setTheme("warm-paper")`, `chrome.update(authorMode: true)`, `chrome.setCatalog(displayMode: "full-stage")`, Left/Right-Pane batches, `getState(includeTokens: true)`, and `captureBoard`. In `--watch` mode, listens for `catalog.itemSelected`, `step.navigated`, `comment.saved` (persisting `Snap Board` PNGs into `course_comments`), `comment.deleted`, and `catalog.actionRequested("create-replica")` (recording tasks in `ledger.json`). |
+| **3A** | **Founder Browser** *(`MacBook` / `iPad` / Local)* | **Hydrogen Dashboard** (`hydrogen serve`) | HTTP (`http://192.168.68.52:7430/` Ethernet, `.85:7430/` Wi-Fi, `127.0.0.1:7430` local) | Authoring Progress & Crop Review | Serves `< 2 ms` cached `ledger.json` Product Cards (`GET /`) and 12-subject mineral Sub-Product Cards (`GET /products/{product}`), unified Warm-Paper `StatusRenderMode::Server` dashboards (`GET /products/{product}/{subject}`), sandboxed read-only `inbox/` & `archive/` files (`GET .../files/{*rel_path}`), and Rule A6-serialized Vault Sync (`POST /api/products/{product}/{subject}/sync`). |
 | **4** | **SIGMA** | **`Course .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L7`) | Student Runtime | Opens `<product>-<subject>.raphs` using the single **Lesson Key** (`open_with_passphrase`). Calls `course_catalog_snapshot()` (`< 1 ms`), reads `GYR-LOGO-BLUE` blob, loads `CourseQuestion` (`L9..L1` steps + `narration`) and linked `CourseTopicCard`s. |
 | **5** | **SIGMA** | **`Student .raphs` (`memory_core_rs`)** | In-process Rust crate (`SQLCipher L1–L6`) | Student Runtime | Reads and updates per-student question state (`default` / `in-progress` / `completed`), attempt/correct counts, `important: true` (`△`), spaced-repetition `reminder` (`"15d"`), and `dueReminder: true` (`repeat due`). |
 | **6** | **SIGMA** | **`Carbon`** (`carbon-shell` or `carbon-web`) | WebSocket (`ws://127.0.0.1:7420/carbon` locally or `wss://` in Browser Mode) | Student Runtime | Merges `Course L7` + `Student L1–L6` into `chrome.setCatalog` (`displayMode: "full-stage"`, `brandLogo`, `importantIcon: "triangle"`, 4-state Warm-Paper cards including `#FFF1F2` rose-blush `dueReminder`); streams Hydrogen's pre-compiled `batch` commands + `speechBeats` across `Level 9 ↔ Level 1`. |
@@ -233,7 +237,7 @@ hydrogen/
 │   ├── theta/                              # In-process `ThetaService` (`theta_calc`), mixed-fraction normalizer & `A-E` MCQ gate
 │   ├── carbon/                             # `CarbonClient` WS driver (`captureBoard`, `getState` bounds, Full-Stage Catalog, `--watch` sync)
 │   ├── ingest/                             # Pure-Rust `hayro` PDF slicer, unified `ledger.rs` & dual-mode `status.html` `report.rs`
-│   ├── server/                             # (Phase 3A) `axum` `:7430` Carbon Warm-Paper Multi-Product & Sub-Product Explorer (`hydrogen serve`)
+│   ├── server/                             # `axum` `:7430` Carbon Warm-Paper Multi-Product & Sub-Product Explorer (`hydrogen serve`: `scanner`, `views`, `routes`)
 │   └── compiler/                           # Deterministic `gate.rs` (Theta + Carbon + Warm-Paper + 5 Font Voices + KaTeX + Clean-Room)
 └── tests/                                  # End-to-end pipeline integration tests
 ```
@@ -281,9 +285,10 @@ Because `<product>-<subject>.raphs` is strictly per-subject and Clean-Room anony
     2. **Inbox & Source File Inventory (`sha256` deduplicated):** Every raw PDF/book/image discovered in `products/<product>/<subject>/{inbox,archive}/`, flagging renamed duplicates automatically and tracking `paper_id` + stage (`queued` $\to$ `sliced` $\to$ `in_progress` $\to$ `completed`).
     3. **Paper Raster Geometry, Expectations & Item Checklist:** `pageCount`, `dpi`, rendered `pages[]`, `expectedQuestions`, missing slots (`Q002..Q014`), per-question `bbox`/`bboxPx`/`cropPath`/`solutionJsonPath`, two-way replica lineage (`single_question` vs. `whole_paper` + parent references), and QA notes.
     4. **Authoring Task Queue:** Pending replica requests (from Carbon's `⋮` menu or CLI), planned topic/prerequisite cards, and notes.
-- **`hydrogen status` & `hydrogen serve` (`Phase 3A`, `:7430`):**
+- **`hydrogen status` & `hydrogen serve` (`Hydrogen Dashboard` on `:7430`):**
   - `discover_active_products` and `discover_product_subjects` surface **only active products (`>= 1` active sub-product) and active sub-products**—untouched products/subjects never clutter cards, `ledger.json`, or `status.html`.
-  - `render_status_html_with_mode` (`StatusRenderMode::{StandaloneFile, Server}`) powers both self-contained `products/<product>/<subject>/status.html` files and the live `axum` `:7430` web explorer (`GET /` Product Cards with `assets/hydrogen-logo.png` $\to$ `GET /products/{product}` Sub-Product Cards $\to$ `GET /products/{product}/{subject}` tabbed/filterable status dashboard with lightbox & sandboxed `inbox/`/`archive/` file streaming).
+  - `render_status_html_with_mode` (`StatusRenderMode::{StandaloneFile, Server}`) powers both self-contained `products/<product>/<subject>/status.html` files and the live `axum` `:7430` **Hydrogen Dashboard** (`GET /` clickable Product Cards $\to$ `GET /products/{product}` clickable 12-subject mineral Sub-Product Cards $\to$ `GET /products/{product}/{subject}` tabbed/filterable status dashboard with a pixel-locked `56px` `#F2ECE1` top bar, compact `.page-hero` strip, lightbox, and lazy `/files/...` HTTP URLs).
+  - **Concurrency & Sandbox Enforcement (`src/server/`):** `ServerState::vault_lock` (`Arc<tokio::sync::Mutex<()>>` per canonical `.sqlite` path) guarantees Conformance Rule A6 across concurrent HTTP requests, while `resolve_sandboxed_subject_file` serves strictly whitelisted read-only extensions inside `inbox/` and `archive/` and blocks `..` / `%2e%2e` traversal, hidden dotfiles, escaping symlinks, `ledger.json`, `status.html`, and `.sqlite` / `.keys.json` / `.raphs` files (`403`/`404`).
 
 ### 5.6 End-to-End Antigravity + Hydrogen CLI Authoring Sequence
 

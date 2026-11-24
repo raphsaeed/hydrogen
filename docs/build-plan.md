@@ -12,8 +12,8 @@
 | **Phase 1** | Workspace Infrastructure & Core Sibling Wiring (`memory_core_rs` + `theta_calc` + `Carbon`) | `[x] Complete` |
 | **Phase 2** | Domain Blueprints, Quality Gates, PDF Slicer & Core CLI | `[x] Complete` |
 | **Phase 3** | Sub-Product Authoring Ledger (`ledger.json` + `status.html`), Two-Way Carbon `--watch` Sync & Visual/Media CLI | `[x] Complete` |
-| **Phase 3A** | Carbon Warm-Paper Status & Multi-Product Explorer Server (`hydrogen serve` via `axum` on `:7430`) | `[ ] Next` |
-| **Phase 4** | **Milestone 1 Proving Ground:** 1st Real 11+ Maths Paper (`GYR-MTH-P001`) End-to-End | `[ ] Pending` |
+| **Phase 3A** | Carbon Warm-Paper Status & Multi-Product Explorer Server (`hydrogen serve` via `axum` on `:7430`) | `[x] Complete` |
+| **Phase 4** | **Milestone 1 Proving Ground:** 1st Real 11+ Maths Paper (`GYR-MTH-P001`) End-to-End | `[ ] Next` |
 | **Phase 5** | Live Teaching Feedback (`Snap Board` Fixes), Replicas & Organic Topic Cards | `[ ] Pending` |
 | **Phase 6** | Clean Customer Release Pipeline, Books/Chapters & Multi-Subject Vault Rollout | `[ ] Pending` |
 | **Phase 7** | Zero-Install Web Browser Delivery (`carbon-web` WASM + `theta.wasm` + Web Vault Gateway) | `[ ] Pending` |
@@ -140,20 +140,20 @@
    - Product cards & sub-product headers display each product's shared brand logo from `products/<product>/assets/` (e.g. `gyara-blue.png` served at `GET /products/{product}/brand-logo`).
 
 ### Phase 3A Sub-Steps
-- [ ] **3A.1 Lean `axum` Dependency & `src/server/` Module Scaffolding (`Cargo.toml`, `src/lib.rs`, `src/server/mod.rs`):**
+- [x] **3A.1 Lean `axum` Dependency & `src/server/` Module Scaffolding (`Cargo.toml`, `src/lib.rs`, `src/server/mod.rs`):**
   - Add minimal pure-Rust `axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }` to `Cargo.toml` (keeping `unsafe_code = "forbid"`, `unwrap_used = "deny"`, `expect_used = "deny"`, and `panic = "deny"`).
   - Create `src/server/` (`mod.rs`, `scanner.rs`, `views.rs`, `routes.rs`) sharing `HydrogenConfig` and strict path-traversal validation (`validate_slug` rejecting `..`, `/`, `\`, hidden `.` segments, and `.sqlite`/`.keys.json`/`.raphs` secret files).
-- [ ] **3A.2 Workspace Scanner, Carbon Light Landing Page (`/`) & Product Sub-Cards Page (`/products/{product}`):**
+- [x] **3A.2 Workspace Scanner, Carbon Light Landing Page (`/`) & Product Sub-Cards Page (`/products/{product}`):**
   - Implement fast `< 2 ms` workspace roll-up scanner (`scan_workspace_overview`, `scan_product_overview`) aggregating active products (`>= 1` active sub-product) and sub-products from `ledger.json` (`vaultSummary`, paper progress, SHA-256 `inbox/` queue, duplicate warnings, replicas, open comments, pending tasks).
   - Render Carbon Warm-Paper HTML pages:
     - `GET /` — **Hydrogen Workspace Landing Page:** Top chrome bar with `assets/hydrogen-logo.png` + global KPIs (Active Products, Active Sub-Products, Verified Qs, Replicas, Queued Inbox Files, Open Comments, Pending Tasks) + **Product Cards** (product brand logo, active sub-product mineral chips, overall progress bar, alert badges, click to open `/products/{product}`).
     - `GET /products/{product}` — **Product Explorer Page:** Breadcrumb (`Products ▸ {product}`), product brand header, and **Sub-Product Cards** (12-subject muted mineral left border `#5B7DB1` / `#4D8B7A` / `#568A9E`, `<stem>.raphs` badge, paper progress bar, verified/sliced/missing counts, replicas, inbox queue, open comments, click to open `/products/{product}/{subject}`).
-- [ ] **3A.3 Unified Sub-Product Status Route, Safe Local File Streaming & Live JSON / Sync Endpoints:**
+- [x] **3A.3 Unified Sub-Product Status Route, Safe Local File Streaming & Live JSON / Sync Endpoints:**
   - `GET /products/{product}/{subject}` — Renders the sub-product status page via `render_status_html_with_mode(..., StatusRenderMode::Server { ... })` (supporting `?refresh=1` or fast cached `ledger.json` + optional `.sqlite` open when `vaultSummary` is absent).
   - `GET /products/{product}/{subject}/files/{*rel_path}` — Strictly sandboxed read-only file streamer serving ONLY allowed subtrees (`inbox/**` and `archive/**`: `.pdf`, `.png`, `.jpg`, `.svg`, `.json`, `.mp4`, `.mp3`) with canonicalized/normalized path checks so `.sqlite`, `.keys.json`, `.raphs`, and `..` traversal are rejected with `403`/`404`.
   - `GET /assets/hydrogen-logo.png` & `GET /products/{product}/brand-logo` — Serve PNG brand logos with proper `image/png` headers.
   - `GET /health` (`{"status":"ok","service":"hydrogen","version":"0.1.0"}`), `GET /api/overview`, `GET /api/products/{product}`, `GET /api/products/{product}/{subject}`, and `POST /api/products/{product}/{subject}/sync` (re-syncs `<stem>.sqlite` -> `ledger.json` + `status.html` on demand).
-- [ ] **3A.4 `hydrogen serve` CLI Subcommand & End-to-End Integration Tests (`src/main.rs` & `tests/phase3a_server.rs`):**
+- [x] **3A.4 `hydrogen serve` CLI Subcommand & End-to-End Integration Tests (`src/main.rs` & `tests/phase3a_server.rs`):**
   - Add `hydrogen serve [--lan] [--port 7430] [--bind <ip:port>]` to `src/main.rs` (and document in `--help`, `docs/sop.md`, and `docs/system-architecture.md`), printing local and LAN URLs on startup + graceful `Ctrl+C` shutdown.
   - Add `tests/phase3a_server.rs` verifying:
     - `GET /health` & `GET /assets/hydrogen-logo.png`,

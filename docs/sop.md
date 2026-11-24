@@ -14,7 +14,7 @@ Rather than running heavy web servers or brittle hardcoded prompt chains, Hydrog
 
 | Component | Role | DGX Spark / Git Location | Port / Binding | Strict Boundary Rule |
 | :--- | :--- | :--- | :---: | :--- |
-| **`Hydrogen`** *(This Repo)* | Pure-Rust Authoring CLI, PDF/PNG Slicer, Product Ledger (`ledger.json` + `status.html`), 4-Tier `RuleLoader`, Quality Gate, Two-Way Carbon `--watch` Bridge & `L7` Vault Manager | `/home/raphspark/projects/hydrogen`<br>`git@github.com:raphsaeed/hydrogen.git` (`main`) | CLI + outbound WS to `:7420` | **Edit only inside `/home/raphspark/projects/hydrogen`.** Never runs during student lessons; never stores learner stats in course vaults. |
+| **`Hydrogen`** *(This Repo)* | Pure-Rust Authoring CLI, PDF/PNG Slicer, Product Ledger (`ledger.json` + `status.html`), `:7430` `Hydrogen Dashboard` Server, 4-Tier `RuleLoader`, Quality Gate, Two-Way Carbon `--watch` Bridge & `L7` Vault Manager | `/home/raphspark/projects/hydrogen`<br>`git@github.com:raphsaeed/hydrogen.git` (`main`) | `:7430` (`hydrogen serve`) + CLI + outbound WS to `:7420` | **Edit only inside `/home/raphspark/projects/hydrogen`.** Never runs during student lessons; never stores learner stats in course vaults. |
 | **`Carbon`** | 120Hz Interactive GPU/WASM Whiteboard & Headless Stage (`carbon-shell`, `carbon-protocol`) | DGX Spark: `/home/raphspark/projects/carbon` *(prebuilt)*<br>MacBook: `~/projects/carbon`<br>`ssh://git@github.com/raphsaeed/carbon.git` (`main`) | `:7420` (`/carbon`, `/health`, `/` WebGL2) | **STRICTLY READ-ONLY SIBLING.** Never modify files inside `/home/raphspark/projects/carbon`. Consume via `carbon-protocol` crate and `ws://...:7420/carbon`. |
 | **`Theta`** (`theta_calc`) | Deterministic Symbolic/Rational CAS, 313-Formula Solver & Graph VM (`calc-api`) | `/home/raphspark/projects/theta`<br>Crate path: `crates/calc-api` | In-process Rust (`< 50 µs`) | **STRICTLY READ-ONLY SIBLING.** Never modify files inside `/home/raphspark/projects/theta`. |
 | **`memory.raphs`** (`memory_core_rs`) | Encrypted SQLCipher `4.14.0` + `sqlite-vec` `0.1.9` + FTS5 Vault Engine | `ssh://git@github.com/raphs-app/raphs.git`<br>Pinned tag: **`memory-core-1.7.0`** (Schema `2.3.0`) | In-process Rust (`Mutex<Memory>`) | **Immutable tagged crate.** Enforce Conformance Rule A6 (single `Memory` handle per `.sqlite` file per process). |
@@ -84,6 +84,51 @@ If port `7420` is not already listening, start `carbon-shell` in the background:
 ```bash
 pkill -f "carbon-shell --headless"
 ```
+
+### 2.3 Operating the Hydrogen Dashboard Server (`:7430`) on DGX Spark
+
+`hydrogen serve` runs the pure-Rust `axum` **Hydrogen Dashboard** (Carbon Warm-Paper Multi-Product $\to$ Sub-Product $\to$ Status Explorer) on port **`7430`** alongside Carbon on **`7420`**.
+
+#### 1. Start the Hydrogen Dashboard (`:7430`)
+- **Foreground (interactive SSH / terminal — prints Local + LAN URLs, stops cleanly on `Ctrl+C`):**
+  ```bash
+  cd /home/raphspark/projects/hydrogen
+  ./target/release/hydrogen serve --lan --port 7430
+  # Or during development:
+  export PATH="$HOME/.cargo/bin:$PATH"
+  cargo run --quiet -- serve --lan --port 7430
+  ```
+- **Localhost-only mode (no LAN exposure, binds `127.0.0.1:7430` from `hydrogen.toml`):**
+  ```bash
+  ./target/release/hydrogen serve
+  ```
+- **Background daemon (detached SSH session):**
+  ```bash
+  nohup /home/raphspark/projects/hydrogen/target/release/hydrogen serve --lan --port 7430 \
+    >/tmp/hydrogen-serve.log 2>&1 &
+  ```
+
+#### 2. Browse & Verify Live Endpoints (`MacBook` / `iPad` / `DGX Spark`)
+- **MacBook / iPad Browser (Ethernet):** `http://192.168.68.52:7430/`
+- **MacBook / iPad Browser (Wi-Fi):** `http://192.168.68.85:7430/`
+- **Local DGX Spark:** `http://127.0.0.1:7430/`
+- **Health & JSON Overview Checks:**
+  ```bash
+  curl -s http://127.0.0.1:7430/health
+  # Returns: {"service":"hydrogen","status":"ok","version":"0.1.0"}
+
+  curl -s http://127.0.0.1:7430/api/overview
+  ```
+- **On-Demand Vault Sync:** Click **`Sync Vault`** in the web UI (or `curl -s -X POST http://127.0.0.1:7430/api/products/gyaraplus/maths/sync`) to refresh cached `vaultSummary` in `ledger.json` and regenerate `status.html`.
+
+#### 3. Stop the Hydrogen Dashboard (`:7430`)
+- **If running in foreground:** Press **`Ctrl+C`** (triggers graceful `SIGINT` shutdown).
+- **If running in background / another shell:**
+  ```bash
+  pkill -INT -f "hydrogen serve"
+  # Confirm port 7430 is closed:
+  ss -tlnp | grep ':7430\b' || echo "Hydrogen Dashboard (:7430) stopped."
+  ```
 
 ---
 
@@ -200,12 +245,17 @@ Whenever starting a new Antigravity session (or checking active product / sub-pr
 │   │   ├── slicer.rs                       # Pure-Rust `hayro` PDF rasterizer + `png` cropper (`PagesOnly`, `AutoWhitespaceBands`, `ExplicitCrops`)
 │   │   ├── ledger.rs                       # Unified sub-product `ledger.json` (`vaultSummary`, SHA-256 sources, page/bbox crops, progress, replica lineage & tasks)
 │   │   └── report.rs                       # Dual-mode Carbon Warm-Paper `status.html` renderer (`StandaloneFile` & `Server` modes, tabs, filters, lightbox)
-│   ├── server/                             # (Phase 3A) `axum` `:7430` Multi-Product & Sub-Product Status Explorer (`hydrogen serve`)
+│   ├── server/                             # `axum` `:7430` Multi-Product & Sub-Product Status Explorer (`hydrogen serve`)
+│   │   ├── mod.rs                          # `ServerState` (Rule A6 per-vault lock), bind/LAN resolver, & file-path sandbox
+│   │   ├── scanner.rs                      # `< 2 ms` cached `ledger.json` (`vaultSummary`) workspace & product roll-up scanner
+│   │   ├── views.rs                        # Carbon Warm-Paper Landing (`/`) & Product (`/products/{product}`) HTML views
+│   │   └── routes.rs                       # `axum` HTML, PNG logo, sandboxed `inbox/`/`archive/` file, JSON & Vault Sync routes
 │   └── compiler/
 │       └── gate.rs                         # Deterministic Quality Gate (Theta + Carbon + Warm-Paper + 5 Font Voices + KaTeX + Clean-Room)
 └── tests/
     ├── phase2_pipeline.rs                  # End-to-end integration test (Rules -> Slice -> Gate -> Vault -> Carbon WS -> Clean Export)
-    └── phase3_ledger_and_carbon.rs         # End-to-end Phase 3 test (SHA-256 ledger, status.html, two-way `--watch`, put-asset, comments & headless captureBoard)
+    ├── phase3_ledger_and_carbon.rs         # End-to-end Phase 3 test (SHA-256 ledger, status.html, two-way `--watch`, put-asset, comments & headless captureBoard)
+    └── phase3a_server.rs                   # End-to-end Phase 3A `:7430` server, active-only cards, sandbox & Vault Sync test suite
 ```
 
 ---
@@ -226,6 +276,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 | Variable (`.env` / OS Env) | `hydrogen.toml` Key | Default / Example | Purpose |
 | :--- | :--- | :--- | :--- |
 | `HYDROGEN_LESSON_KEY` | *(secret — `.env` only)* | *(required)* | Passphrase unlocking `<stem>.sqlite` / `<stem>.raphs` |
+| `HYDROGEN_BIND_ADDR` | `bind_addr` | `127.0.0.1:7430` | Default bind address for `hydrogen serve` (`--lan` overrides IP to `0.0.0.0`; `--port` / `--bind` override at CLI) |
 | `CARBON_WS_URL` | `carbon_ws_url` | `ws://127.0.0.1:7420/carbon` | Default Carbon WebSocket endpoint (`ws://127.0.0.1:7420/carbon` for DGX headless or `ws://192.168.68.64:7420/carbon` for MacBook) |
 | `HYDROGEN_DEVICE_ID` | `device_id` | `hydrogen-dgx-spark` | HLC device attribution stamped in `.raphs` `provenance` |
 | `HYDROGEN_DEFAULT_PRODUCT` | `default_product` | `gyaraplus` | Default product directory under `products/` & `rules/` |
@@ -264,6 +315,10 @@ cargo run --quiet -- init-vault --product gyaraplus --subject maths --pack
 
 # Inspect active sub-product inbox queue, paper/topic progress & open comments (+ emit `products/gyaraplus/maths/status.html`)
 cargo run --quiet -- status --product gyaraplus --set-expected GYR-MTH-P001 50 --html
+
+# Launch Hydrogen Dashboard on `:7430` (`--lan` exposes `http://192.168.68.52:7430/` & `.85:7430/`; stop with Ctrl+C or `pkill -INT -f "hydrogen serve"`)
+cargo run --quiet -- serve --lan --port 7430
+cargo run --quiet -- serve --bind 127.0.0.1:7430
 ```
 
 ### 6.2 Clean-Room PDF / Image Slicing (`inbox/` → `archive/` + `ledger.json`)
@@ -417,6 +472,11 @@ cargo run --quiet -- doctor --carbon ws://127.0.0.1:7420/carbon
 cargo run --quiet -- verify-question products/gyaraplus/maths/archive/GYR-MTH-P001/GYR-MTH-P001-Q001.json
 cargo run --quiet -- verify-question products/gyaraplus/maths/archive/GYR-MTH-P001/GYR-MTH-P001-Q015.json
 
-# 6. Optional: Open http://192.168.68.52:7420/ on MacBook/iPad and launch interactive two-way `--watch`
+# 6. Optional: Launch Hydrogen Dashboard (:7430 -> http://192.168.68.52:7430/) & interactive Carbon `--watch` (:7420 -> http://192.168.68.52:7420/)
+./target/release/hydrogen serve --lan --port 7430 >/tmp/hydrogen-serve.log 2>&1 &
 cargo run --quiet -- preview-carbon --catalog --watch --carbon ws://127.0.0.1:7420/carbon
+
+# 7. When finished for the day, stop background servers cleanly
+pkill -INT -f "hydrogen serve"
+pkill -f "carbon-shell --headless"
 ```

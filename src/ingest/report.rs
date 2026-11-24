@@ -800,6 +800,7 @@ pub fn render_status_html_with_mode(
       --violet: #6D5CAE;
     }
     * { box-sizing: border-box; }
+    html { scrollbar-gutter: stable; }
     body {
       margin: 0;
       background: var(--paper-bg);
@@ -810,49 +811,89 @@ pub fn render_status_html_with_mode(
     a { color: var(--blue); text-decoration: none; }
     a:hover { text-decoration: underline; }
     header.topbar {
+      width: 100%;
+      height: 56px;
       background: var(--chrome-bg);
       border-bottom: 1px solid var(--chrome-border);
-      padding: 14px 28px;
-      display: flex;
-      flex-wrap: wrap;
+      padding: 0 28px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      justify-content: space-between;
       gap: 16px;
     }
-    .brand-row {
+    .topbar-left {
+      justify-self: start;
       display: flex;
       align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
+    }
+    .topbar-center {
+      justify-self: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .topbar-center h1 {
+      margin: 0;
+      font-size: 1.16rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--ink-primary);
+      white-space: nowrap;
+    }
+    .topbar-right {
+      justify-self: end;
+      display: flex;
+      align-items: center;
     }
     .hydrogen-mark {
-      height: 38px;
-      width: 38px;
-      border-radius: 9px;
-      background: #1F2421;
-      padding: 4px;
-      object-fit: contain;
-      display: block;
-      box-shadow: 0 1px 2px rgba(31, 36, 33, 0.12);
-    }
-    .brand-row img.brand-logo {
       height: 36px;
       width: auto;
+      background: transparent;
+      object-fit: contain;
       display: block;
     }
-    .breadcrumbs {
+    .page-hero {
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto 10px;
+      padding: 5px 12px;
+      background: var(--board-bg);
+      border: 1px solid var(--chrome-border);
+      border-radius: 999px;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 6px;
-      font-size: 0.82rem;
+    }
+    .hero-sep {
+      color: var(--chrome-border);
+      font-size: 0.8rem;
+      user-select: none;
+    }
+    img.brand-logo {
+      height: 20px;
+      width: auto;
+      background: transparent;
+      display: block;
+      object-fit: contain;
+    }
+    .breadcrumbs {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      font-size: 0.75rem;
       color: var(--ink-muted);
-      margin-bottom: 2px;
     }
     .crumb-pill {
       background: var(--pill-bg);
       border: 1px solid var(--chrome-border);
-      border-radius: 6px;
-      padding: 1px 8px;
+      border-radius: 5px;
+      padding: 1px 6px;
+      font-size: 0.74rem;
       font-weight: 600;
       color: var(--ink-primary);
     }
@@ -863,32 +904,25 @@ pub fn render_status_html_with_mode(
     }
     .crumb-active {
       font-weight: 700;
+      font-size: 0.75rem;
       color: var(--ink-primary);
     }
-    .crumb-sep { color: var(--ink-muted); font-size: 0.75rem; }
-    .brand-title h1 {
-      margin: 0;
-      font-size: 1.2rem;
-      letter-spacing: -0.01em;
-    }
-    .brand-title p {
-      margin: 2px 0 0;
-      font-size: 0.82rem;
-      color: var(--ink-muted);
-    }
+    .crumb-sep { color: var(--ink-muted); font-size: 0.7rem; }
     .kpi-strip {
-      display: flex;
+      display: inline-flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      gap: 5px;
     }
     .kpi-pill {
       background: var(--pill-bg);
       border: 1px solid var(--chrome-border);
       border-radius: 999px;
-      padding: 5px 13px;
-      font-size: 0.82rem;
+      padding: 2px 8px;
+      font-size: 0.73rem;
       font-weight: 600;
+      line-height: 1.35;
     }
     .kpi-pill.alert {
       background: var(--rose-bg);
@@ -905,8 +939,8 @@ pub fn render_status_html_with_mode(
       color: #FFFFFF;
       border: 1px solid #1D4ED8;
       border-radius: 999px;
-      padding: 6px 14px;
-      font-size: 0.82rem;
+      padding: 3px 10px;
+      font-size: 0.73rem;
       font-weight: 700;
       cursor: pointer;
     }
@@ -914,23 +948,24 @@ pub fn render_status_html_with_mode(
     main {
       max-width: 1380px;
       margin: 0 auto;
-      padding: 20px 28px 56px;
+      padding: 14px 28px 52px;
     }
     nav.section-tabs {
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto 18px;
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 22px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--chrome-border);
+      justify-content: center;
+      gap: 5px;
     }
     button.tab-chip, button.filter-chip {
       background: var(--pill-bg);
       color: var(--ink-primary);
       border: 1px solid var(--chrome-border);
       border-radius: 999px;
-      padding: 6px 14px;
-      font-size: 0.83rem;
+      padding: 3px 10px;
+      font-size: 0.75rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.12s ease;
@@ -983,6 +1018,7 @@ pub fn render_status_html_with_mode(
       color: var(--ink-primary);
       border-bottom: 1px solid var(--chrome-border);
       padding-bottom: 6px;
+      text-align: center;
     }
     .subject-grid {
       display: grid;
@@ -990,12 +1026,19 @@ pub fn render_status_html_with_mode(
       gap: 14px;
     }
     .subject-card {
+      cursor: pointer;
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-left-width: 6px;
       border-radius: 10px;
       padding: 14px 16px;
       box-shadow: 0 1px 2px rgba(31, 36, 33, 0.04);
+      transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+    }
+    .subject-card:hover {
+      border-color: var(--blue-border);
+      box-shadow: 0 6px 16px rgba(31, 36, 33, 0.08);
+      transform: translateY(-1px);
     }
     .subject-card .subj-head {
       display: flex;
@@ -1156,7 +1199,7 @@ pub fn render_status_html_with_mode(
 </head>
 <body>
   <header class="topbar">
-    <div class="brand-row">"##,
+    <div class="topbar-left">"##,
     );
 
     let h_logo_src = match mode {
@@ -1167,12 +1210,34 @@ pub fn render_status_html_with_mode(
         _ => report.hydrogen_logo_data_uri.as_deref(),
     };
     if let Some(h_uri) = h_logo_src {
-        let _ = write!(
-            html,
-            r##"<img class="hydrogen-mark" src="{}" alt="Hydrogen">"##,
-            escape_html(h_uri)
-        );
+        match mode {
+            StatusRenderMode::Server { home_url, .. } => {
+                let _ = write!(
+                    html,
+                    r##"<a href="{}"><img class="hydrogen-mark" src="{}" alt="Hydrogen"></a>"##,
+                    escape_html(home_url),
+                    escape_html(h_uri)
+                );
+            }
+            StatusRenderMode::StandaloneFile => {
+                let _ = write!(
+                    html,
+                    r##"<img class="hydrogen-mark" src="{}" alt="Hydrogen">"##,
+                    escape_html(h_uri)
+                );
+            }
+        }
     }
+    html.push_str(
+        r##"</div>
+    <div class="topbar-center">
+      <h1>Hydrogen Dashboard</h1>
+    </div>
+    <div class="topbar-right"></div>
+  </header>
+  <main>
+    <div class="page-hero">"##,
+    );
 
     if let Some(ref logo_uri) = report.brand_logo_data_uri {
         let _ = write!(
@@ -1212,39 +1277,44 @@ pub fn render_status_html_with_mode(
         _ => String::new(),
     };
 
+    let rep_suffix = if total_replicas > 0 {
+        format!(" (+{total_replicas} AI)")
+    } else {
+        String::new()
+    };
+    let cards_pill = if total_cards > 0 {
+        format!(r##"<span class="kpi-pill">Cards: {total_cards}</span>"##)
+    } else {
+        String::new()
+    };
+
     let _ = write!(
         html,
         r##"
-      <div class="brand-title">
-        {breadcrumbs_html}
-        <h1>Hydrogen Authoring &amp; QA Dashboard · <code>{}/{}</code> (<code>{}.raphs</code>)</h1>
-        <p>Warm-Paper Unified Sub-Product Ledger (<code>ledger.json</code> + Encrypted <code>L7</code> Vault · {} ms)</p>
+      {breadcrumbs_html}
+      <code style="font-size:0.72rem;">{}.raphs</code>
+      <span class="hero-sep">&middot;</span>
+      <div class="kpi-strip">
+        <span class="kpi-pill ok">Verified: {total_verified}{}</span>
+        {cards_pill}
+        <span class="kpi-pill{}">Inbox: {total_queued}{}</span>
+        <span class="kpi-pill{}">Comments: {open_comments_len}</span>
+        <span class="kpi-pill{}">Tasks: {pending_tasks_len}</span>
+        {sync_btn_html}
       </div>
     </div>
-    <div class="kpi-strip">
-      <span class="kpi-pill ok">Verified Qs: {total_verified} (+{total_replicas} AI)</span>
-      <span class="kpi-pill">Topic Cards: {total_cards}</span>
-      <span class="kpi-pill{}">Inbox Queued: {total_queued}{}</span>
-      <span class="kpi-pill{}">Open Comments: {open_comments_len}</span>
-      <span class="kpi-pill{}">Pending Tasks: {pending_tasks_len}</span>
-      {sync_btn_html}
-    </div>
-  </header>
-  <main>
     <nav class="section-tabs" aria-label="Dashboard Sections">
-      <button type="button" class="tab-chip active" data-section-target="all">All Sections</button>
-      <button type="button" class="tab-chip" data-section-target="overview">Overview &amp; Papers</button>
-      <button type="button" class="tab-chip" data-section-target="questions">Questions &amp; Crops ({questions_len})</button>
+      <button type="button" class="tab-chip active" data-section-target="all">All</button>
+      <button type="button" class="tab-chip" data-section-target="overview">Overview</button>
+      <button type="button" class="tab-chip" data-section-target="questions">Questions ({questions_len})</button>
       <button type="button" class="tab-chip" data-section-target="topics">Topics ({topics_len})</button>
       <button type="button" class="tab-chip" data-section-target="replicas">Replicas ({replicas_total})</button>
-      <button type="button" class="tab-chip" data-section-target="comments">Comments &amp; Tasks ({})</button>
+      <button type="button" class="tab-chip" data-section-target="comments">Comments ({})</button>
       <button type="button" class="tab-chip" data-section-target="sources">Sources ({sources_len})</button>
     </nav>
 "##,
-        escape_html(&report.product),
-        escape_html(&report.subject),
         escape_html(&report.vault_stem),
-        report.elapsed_ms,
+        escape_html(&rep_suffix),
         if total_duplicates > 0 { " alert" } else { "" },
         if total_duplicates > 0 {
             format!(" ({total_duplicates} dup)")
@@ -1266,7 +1336,7 @@ pub fn render_status_html_with_mode(
         };
         let _ = write!(
             html,
-            r##"        <div class="subject-card" style="border-left-color: {};">
+            r##"        <div class="subject-card" data-jump-section="questions" role="button" tabindex="0" style="border-left-color: {};">
           <div class="subj-head">
             <span class="subj-title">{}</span>
             {}
@@ -1961,6 +2031,21 @@ pub fn render_status_html_with_mode(
             const match = target === "all" || sec.getAttribute("data-section") === target;
             sec.classList.toggle("hidden-sec", !match);
           });
+        });
+      });
+
+      document.querySelectorAll(".subject-card[data-jump-section]").forEach((card) => {
+        function jumpFromCard() {
+          const dest = card.getAttribute("data-jump-section") || "questions";
+          const targetTab = document.querySelector(`button.tab-chip[data-section-target="${dest}"]`);
+          if (targetTab) targetTab.click();
+        }
+        card.addEventListener("click", jumpFromCard);
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            jumpFromCard();
+          }
         });
       });
 
